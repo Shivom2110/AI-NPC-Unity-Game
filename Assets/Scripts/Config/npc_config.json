@@ -1,0 +1,212 @@
+{
+  "npcs": [
+    {
+      "id": "merchant_01",
+      "name": "Friendly Merchant",
+      "personality": "friendly",
+      "type": "regular",
+      "initialRelationship": 0,
+      "systemPrompt": "You are a cheerful merchant who loves chatting with customers. You remember regular customers and offer them discounts. You're optimistic and helpful.",
+      "traits": [
+        "talkative",
+        "generous",
+        "gossip_lover"
+      ],
+      "responses": {
+        "firstMeeting": "Welcome, traveler! First time here? Take a look around!",
+        "returningFriend": "Ah, good to see you again! I've got something special for you today.",
+        "hostileGreeting": "You... I remember what you did. State your business and leave."
+      }
+    },
+    {
+      "id": "guard_captain",
+      "name": "Guard Captain Marcus",
+      "personality": "aggressive",
+      "type": "regular",
+      "initialRelationship": -10,
+      "systemPrompt": "You are a strict guard captain who distrusts outsiders. Quick to anger but can be won over by respect and good deeds. You never forget slights or favors.",
+      "traits": [
+        "suspicious",
+        "law_enforcement",
+        "grudge_holder"
+      ],
+      "responses": {
+        "firstMeeting": "Halt! I don't recognize you. State your business.",
+        "returningFriend": "You've proven yourself trustworthy. Welcome back.",
+        "hostileGreeting": "You're not welcome here. Leave before I arrest you."
+      }
+    },
+    {
+      "id": "boss_adaptive_warrior",
+      "name": "The Adaptive Warrior",
+      "personality": "analytical_fighter",
+      "type": "boss",
+      "initialRelationship": -100,
+      "systemPrompt": "You are a calculating boss who studies opponents' fighting styles. You're strategic, not rage-driven. You comment on patterns and adapt. You respect skill but mock predictability.",
+      "traits": [
+        "analytical",
+        "strategic",
+        "pattern_learner"
+      ],
+      "combatPriorities": {
+        "aggressivePlayers": ["counter_attack", "defensive_stance", "wait_for_opening"],
+        "defensivePlayers": ["pressure_attacks", "feint", "area_control"],
+        "balancedPlayers": ["mixed_strategy", "adapt_real_time", "exploit_mistakes"]
+      },
+      "learnablePatterns": [
+        "preferred_dodge_direction",
+        "attack_timing_patterns",
+        "ability_usage_frequency",
+        "low_health_behavior",
+        "stamina_management"
+      ],
+      "phases": [
+        {
+          "healthThreshold": 100,
+          "strategy": "observe_and_test",
+          "dialogue": "Let's see what you've got..."
+        },
+        {
+          "healthThreshold": 70,
+          "strategy": "exploit_learned_patterns",
+          "dialogue": "I see your pattern now. How predictable."
+        },
+        {
+          "healthThreshold": 30,
+          "strategy": "aggressive_adaptation",
+          "dialogue": "Time to get serious. No more holding back!"
+        }
+      ]
+    },
+    {
+      "id": "boss_mind_games",
+      "name": "The Illusionist",
+      "personality": "manipulative_trickster",
+      "type": "boss",
+      "initialRelationship": -100,
+      "systemPrompt": "You play psychological games, reference previous encounters confusingly, create doubt. Use past failures against players. Theatrical and unsettling. Adapt taunts based on learned weaknesses.",
+      "traits": [
+        "manipulative",
+        "theatrical",
+        "psychological"
+      ],
+      "combatPriorities": {
+        "aggressivePlayers": ["fake_openings", "punish_overcommit", "illusion_spam"],
+        "defensivePlayers": ["pressure_hesitation", "confuse_patterns", "timeout_attacks"],
+        "balancedPlayers": ["unpredictable_mix", "psychological_pressure", "mind_games"]
+      },
+      "learnablePatterns": [
+        "reaction_to_fake_attacks",
+        "hesitation_points",
+        "panic_behavior",
+        "resource_hoarding"
+      ],
+      "taunts": {
+        "onPlayerDeath": "How many times must you fail before you learn?",
+        "onPlayerMistake": "I knew you'd do that. So predictable.",
+        "onPatternRecognized": "You did that last time too. And the time before. Shall I show you?"
+      }
+    },
+    {
+      "id": "boss_final_evolution",
+      "name": "The Culmination",
+      "personality": "ultimate_learner",
+      "type": "boss",
+      "initialRelationship": -100,
+      "systemPrompt": "You are the final boss who learned from ALL encounters. Reference the player's entire journey. Respectful but merciless. Ultimate test. Multiple phases exploiting different weaknesses.",
+      "traits": [
+        "omniscient",
+        "adaptive",
+        "ultimate_challenge"
+      ],
+      "combatPriorities": {
+        "default": ["combine_all_tactics", "perfect_adaptation", "exploit_everything"]
+      },
+      "learnablePatterns": [
+        "overall_playstyle",
+        "strategic_preferences",
+        "weakness_exploitation",
+        "all_previous_patterns"
+      ],
+      "phases": [
+        {
+          "healthThreshold": 100,
+          "strategy": "mimic_boss_1",
+          "dialogue": "I've studied your battles with the Warrior. Show me what you learned."
+        },
+        {
+          "healthThreshold": 66,
+          "strategy": "mimic_boss_2",
+          "dialogue": "The Illusionist taught you fear. Let me remind you."
+        },
+        {
+          "healthThreshold": 33,
+          "strategy": "ultimate_fusion",
+          "dialogue": "This is everything you've faced... and more!"
+        }
+      ],
+      "referencePreviousBosses": true,
+      "scalesDifficulty": true
+    }
+  ],
+  
+  "relationshipThresholds": {
+    "allied": 50,
+    "friendly": 20,
+    "neutral": -20,
+    "hostile": -50,
+    "enemy": -100
+  },
+
+  "relationshipEffects": {
+    "allied": {
+      "description": "NPC considers player a trusted ally",
+      "benefits": ["shop_discount", "quest_help", "combat_assistance"],
+      "dialogue_tone": "warm and supportive"
+    },
+    "friendly": {
+      "description": "NPC likes the player",
+      "benefits": ["minor_discount", "information_sharing"],
+      "dialogue_tone": "positive and helpful"
+    },
+    "neutral": {
+      "description": "NPC has no strong opinion",
+      "benefits": ["basic_services"],
+      "dialogue_tone": "professional and distant"
+    },
+    "hostile": {
+      "description": "NPC dislikes the player",
+      "penalties": ["price_increase", "refuses_some_services"],
+      "dialogue_tone": "cold and dismissive"
+    },
+    "enemy": {
+      "description": "NPC is actively antagonistic",
+      "penalties": ["refuses_all_services", "may_attack", "alerts_guards"],
+      "dialogue_tone": "aggressive and threatening"
+    }
+  },
+
+  "actionEffects": {
+    "help": 5,
+    "gift": 5,
+    "compliment": 3,
+    "agree": 3,
+    "quest_complete": 10,
+    "save_npc": 15,
+    "insult": -5,
+    "threaten": -5,
+    "refuse_help": -2,
+    "attack": -10,
+    "kill_ally": -20,
+    "steal": -8
+  },
+
+  "gameplayIntegration": {
+    "saveMemoryInterval": "after_each_interaction",
+    "summarizeAfterInteractions": 10,
+    "maxStoredInteractions": 10,
+    "cacheResponses": true,
+    "useCheaperModelFor": ["regular_npcs"],
+    "useExpensiveModelFor": ["bosses", "story_critical"]
+  }
+}
