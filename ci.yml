@@ -1,0 +1,56 @@
+name: Unity Personal CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  code-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up .NET (for C# analyzers)
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '7.0.x'
+
+      - name: Run Roslyn analyzers
+        run: |
+          dotnet tool install --global dotnet-format
+          dotnet format --check
+
+      - name: Run CodeQL scan
+        uses: github/codeql-action/init@v2
+        with:
+          languages: csharp
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v2
+
+  unity-tests:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Run Unity EditMode tests
+        run: |
+          echo "Running Unity EditMode tests"
+          /Applications/Unity/Hub/Editor/2023.2.0f1/Unity.app/Contents/MacOS/Unity \
+          -projectPath $GITHUB_WORKSPACE \
+          -runTests \
+          -testPlatform EditMode \
+          -batchmode \
+          -nographics \
+          -logFile TestResults.log \
+          -quit
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: Unity-EditMode-TestResults
+          path: TestResults.log
