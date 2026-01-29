@@ -1,216 +1,79 @@
 using System.Threading.Tasks;
 using UnityEngine;
-using TMPro;
 
 public class NPCController : MonoBehaviour
 {
-    [Header("NPC Identity")]
-    [SerializeField] private string npcId = "npc_guard_01";
-    [SerializeField] private string npcName = "Guard";
-    [SerializeField] private string personalityType = "neutral"; // aggressive, friendly, mysterious, etc.
+    [Header("Boss Settings")]
     [SerializeField] private bool isBoss = false;
 
-    [Header("UI References")]
-    [SerializeField] private GameObject dialoguePanel;
-    [SerializeField] private TextMeshProUGUI dialogueText;
-    [SerializeField] private TextMeshProUGUI npcNameText;
-    [SerializeField] private TextMeshProUGUI relationshipText;
+    public bool IsBoss() => isBoss;
 
-    private NPCMemory currentMemory;
-    private bool isProcessing = false;
+    [Header("NPC Identity")]
+    [SerializeField] private string npcId = "npc_01";
+    [SerializeField] private string personality = "neutral";
 
-    async void Start()
+    private NPCMemory memory;
+
+    private async void Start()
     {
-        // Load NPC memory on start
-        currentMemory = await NPCMemoryManager.Instance.LoadNPCMemory(npcId, personalityType);
-        UpdateRelationshipUI();
-    }
-
-    // Main interaction method - call this when player talks to NPC
-    public async void InteractWithPlayer(string playerAction)
-    {
-        if (isProcessing)
+        if (NPCMemoryManager.Instance == null)
         {
-            Debug.Log("Already processing interaction...");
+            Debug.LogWarning("[NPCController] NPCMemoryManager missing in scene. Add it to a Systems GameObject.");
             return;
         }
 
-        isProcessing = true;
-        ShowDialogue("...");
-
-        try
-        {
-            // Generate AI response
-            string npcResponse = await OpenAIService.Instance.GenerateNPCResponse(
-                npcId, 
-                playerAction, 
-                currentMemory, 
-                isBoss
-            );
-
-            // Analyze player patterns
-            OpenAIService.Instance.AnalyzePlayerPattern(playerAction, currentMemory);
-
-            // Determine relationship change based on action
-            int relationshipChange = CalculateRelationshipChange(playerAction, npcResponse);
-
-            // Record the interaction
-            await NPCMemoryManager.Instance.RecordInteraction(
-                npcId,
-                playerAction,
-                npcResponse,
-                "completed",
-                relationshipChange
-            );
-
-            // Update memory reference
-            currentMemory = await NPCMemoryManager.Instance.LoadNPCMemory(npcId);
-
-            // Show response to player
-            ShowDialogue(npcResponse);
-            UpdateRelationshipUI();
-
-            // Trigger any gameplay consequences
-            HandleInteractionConsequences(relationshipChange);
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"Error in NPC interaction: {e.Message}");
-            ShowDialogue("...");
-        }
-        finally
-        {
-            isProcessing = false;
-        }
+        memory = await NPCMemoryManager.Instance.LoadNPCMemory(npcId, personality);
     }
 
-    // For boss NPCs - get combat strategy
-    public async Task<string[]> GetBossCombatStrategy(string playerCombatStyle)
-    {
-        if (!isBoss) return null;
-
-        string strategyJson = await OpenAIService.Instance.GenerateBossCombatStrategy(
-            npcId,
-            playerCombatStyle,
-            currentMemory
-        );
-
-        // Parse JSON array of actions
-        try
-        {
-            // Simple JSON parsing (you might want to use a proper JSON library)
-            strategyJson = strategyJson.Trim('[', ']', ' ', '\n');
-            string[] actions = strategyJson.Split(',');
-            
-            for (int i = 0; i < actions.Length; i++)
-            {
-                actions[i] = actions[i].Trim('"', ' ');
-            }
-
-            return actions;
-        }
-        catch
-        {
-            Debug.LogWarning("Failed to parse boss strategy, using defaults");
-            return new string[] { "attack", "block", "special" };
-        }
-    }
-
-    // Calculate how much the relationship should change
-    private int CalculateRelationshipChange(string playerAction, string npcResponse)
-    {
-        int change = 0;
-
-        // Positive actions
-        if (playerAction.Contains("help") || playerAction.Contains("gift") || playerAction.Contains("compliment"))
-            change += 5;
-        
-        if (playerAction.Contains("agree") || playerAction.Contains("support"))
-            change += 3;
-
-        // Negative actions
-        if (playerAction.Contains("insult") || playerAction.Contains("threaten") || playerAction.Contains("attack"))
-            change -= 5;
-        
-        if (playerAction.Contains("refuse") || playerAction.Contains("ignore"))
-            change -= 2;
-
-        // Analyze NPC response tone (simple sentiment analysis)
-        if (npcResponse.Contains("!") && npcResponse.Contains("thank"))
-            change += 2;
-        
-        if (npcResponse.Contains("anger") || npcResponse.Contains("disappointed"))
-            change -= 1;
-
-        return change;
-    }
-
-    // Handle gameplay consequences of relationship changes
-    private void HandleInteractionConsequences(int relationshipChange)
-    {
-        if (currentMemory.relationshipScore >= 50 && relationshipChange > 0)
-        {
-            // Unlock allied benefits
-            Debug.Log($"{npcName} is now your ally!");
-            // TODO: Give player item, unlock quest, etc.
-        }
-        else if (currentMemory.relationshipScore <= -50 && relationshipChange < 0)
-        {
-            // Trigger hostile behavior
-            Debug.Log($"{npcName} has become hostile!");
-            // TODO: Start combat, close shop, etc.
-        }
-    }
-
-    // UI Methods
-    private void ShowDialogue(string text)
-    {
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(true);
-
-        if (dialogueText != null)
-            dialogueText.text = text;
-
-        if (npcNameText != null)
-            npcNameText.text = npcName;
-    }
-
-    public void HideDialogue()
-    {
-        if (dialoguePanel != null)
-            dialoguePanel.SetActive(false);
-    }
-
-    private void UpdateRelationshipUI()
-    {
-        if (relationshipText != null && currentMemory != null)
-        {
-            string level = NPCMemoryManager.Instance.GetRelationshipLevel(currentMemory.relationshipScore);
-            relationshipText.text = $"{level} ({currentMemory.relationshipScore})";
-        }
-    }
-
-    // Called when player enters interaction range
-    private void OnTriggerEnter(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            // Show interaction prompt
-            Debug.Log($"Press E to talk to {npcName}");
-            // TODO: Show UI prompt
-        }
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (other.CompareTag("Player"))
-        {
-            HideDialogue();
-        }
-    }
-
-    // Public getters for other systems
-    public NPCMemory GetMemory() => currentMemory;
-    public bool IsBoss() => isBoss;
     public string GetNPCId() => npcId;
+
+    public NPCMemory GetMemory() => memory;
+
+    // Old code expects this async interaction style
+    public async Task<string> InteractWithPlayer(string playerAction)
+    {
+        if (NPCMemoryManager.Instance == null)
+            return "(memory system not ready)";
+
+        if (memory == null)
+            memory = await NPCMemoryManager.Instance.LoadNPCMemory(npcId, personality);
+
+        string response = GenerateLocalResponse(playerAction);
+
+        int delta = 0;
+        if (playerAction.Contains("help")) delta = +5;
+        if (playerAction.Contains("threat")) delta = -10;
+
+        await NPCMemoryManager.Instance.RecordInteraction(npcId, playerAction, response, "ok", delta);
+        return response;
+    }
+
+    private string GenerateLocalResponse(string action)
+    {
+        int score = memory != null ? memory.relationshipScore : 0;
+        string rel = NPCMemoryManager.Instance != null ? NPCMemoryManager.Instance.GetRelationshipLevel(score) : "Neutral";
+
+        // Personality flavored responses (placeholder)
+        string p = personality.ToLower();
+
+        if (p.Contains("merchant"))
+        {
+            if (rel == "Friendly" || rel == "Allied") return "Ah! Always good to see you. Need supplies?";
+            if (rel == "Hostile" || rel == "Enemy") return "Browse quickly. I’m watching you.";
+            return "Welcome. Take a look around.";
+        }
+
+        if (p.Contains("guard"))
+        {
+            if (rel == "Friendly" || rel == "Allied") return "Stay out of trouble and we’re fine.";
+            if (rel == "Hostile" || rel == "Enemy") return "One step wrong and you’re done.";
+            return "Move along.";
+        }
+
+        if (action.Contains("hello") || action.Contains("greet")) return "Greetings.";
+        if (action.Contains("bye") || action.Contains("leave")) return "Farewell.";
+        if (action.Contains("help")) return "I appreciate that.";
+        if (action.Contains("threat")) return "Careful.";
+        return "I see.";
+    }
 }
