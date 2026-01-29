@@ -1,4 +1,5 @@
 using UnityEngine;
+using AINPC.Systems.Events;
 
 public class PlayerCombatController : MonoBehaviour
 {
@@ -16,6 +17,12 @@ public class PlayerCombatController : MonoBehaviour
     private float lastAttackTime;
     private BossAIController currentBoss;
     private string lastAction = "";
+
+    private void PublishCombatEvent(PlayerEventType type, string meta = "")
+    {
+        string bossId = currentBoss != null ? currentBoss.gameObject.name : "";
+        EventBus.Publish(new PlayerEvent(type, npcId: "", bossId: bossId, meta: meta));
+    }
 
     void Update()
     {
@@ -76,6 +83,8 @@ public class PlayerCombatController : MonoBehaviour
         lastAction = "light_attack";
         lastAttackTime = Time.time;
 
+        PublishCombatEvent(PlayerEventType.AttackMid, "light");
+
         // Try to hit boss
         if (currentBoss != null && IsInRange(currentBoss.transform))
         {
@@ -91,6 +100,8 @@ public class PlayerCombatController : MonoBehaviour
         Debug.Log("Player: Heavy Attack!");
         lastAction = "heavy_attack";
         lastAttackTime = Time.time;
+
+        PublishCombatEvent(PlayerEventType.AttackHigh, "heavy");
 
         // Try to hit boss
         if (currentBoss != null && IsInRange(currentBoss.transform))
@@ -111,6 +122,10 @@ public class PlayerCombatController : MonoBehaviour
         float horizontal = Input.GetAxis("Horizontal");
         string dodgeDirection = horizontal < 0 ? "dodge_left" : (horizontal > 0 ? "dodge_right" : "dodge_back");
 
+        if (dodgeDirection == "dodge_left") PublishCombatEvent(PlayerEventType.DodgeLeft);
+        else if (dodgeDirection == "dodge_right") PublishCombatEvent(PlayerEventType.DodgeRight);
+        else PublishCombatEvent(PlayerEventType.DodgeBack);
+
         if (currentBoss != null)
         {
             currentBoss.OnPlayerCombatAction(dodgeDirection);
@@ -125,6 +140,8 @@ public class PlayerCombatController : MonoBehaviour
         {
             Debug.Log("Player: Blocking!");
             lastAction = "block";
+
+            PublishCombatEvent(PlayerEventType.Block);
 
             if (currentBoss != null)
             {
