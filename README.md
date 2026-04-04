@@ -85,7 +85,6 @@ Example:
 # 🏗️ Project Structure
 
 Assets/
-│
 ├── Scripts/
 │   ├── Core/
 │   │   ├── GameInitializer.cs
@@ -111,12 +110,11 @@ Assets/
 │       ├── DialogueUIController.cs
 │       └── BossDebugUIController.cs
 │
-├── Scenes/
-│   ├── HubArea.unity
-│   ├── Boss1Arena.unity
-│   ├── Boss2Arena.unity
-│   └── Boss3Arena.unity
-
+└── Scenes/
+├── HubArea.unity
+├── Boss1Arena.unity
+├── Boss2Arena.unity
+└── Boss3Arena.unity
 ---
 
 # ⚙️ Setup Instructions
