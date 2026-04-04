@@ -1,176 +1,87 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
-using System.Collections.Generic;
 
 public class PlayerInteractionManager : MonoBehaviour
 {
-    [Header("UI References")]
-    [SerializeField] private GameObject dialogueChoicesPanel;
-    [SerializeField] private Button[] choiceButtons; // Assign 3-4 buttons
-    [SerializeField] private TextMeshProUGUI[] choiceTexts;
-    
-    [Header("Input")]
+    [SerializeField] private float interactionRadius = 4f;
     [SerializeField] private KeyCode interactKey = KeyCode.E;
-    [SerializeField] private float interactionRange = 3f;
+    [SerializeField] private DialogueUIController dialogueUI;
 
-    private NPCController currentNPC;
-    private bool canInteract = false;
+    private NPCController currentNpc;
+    private int interactionCount = 0;
 
-    void Update()
+    private readonly string[] actionCycle = new string[]
     {
-        // Check for nearby NPCs
-        CheckForNearbyNPCs();
+        "greet",
+        "trade",
+        "help",
+        "bye"
+    };
 
-        // Handle interaction input
-        if (Input.GetKeyDown(interactKey) && canInteract && currentNPC != null)
+    private void Update()
+    {
+        FindNearestNpc();
+
+        if (currentNpc != null)
         {
-            ShowDialogueOptions();
+            if (dialogueUI != null)
+                dialogueUI.ShowPrompt("Press E to interact");
+
+            if (Input.GetKeyDown(interactKey))
+            {
+                Interact();
+            }
+        }
+        else
+        {
+            if (dialogueUI != null)
+                dialogueUI.HidePrompt();
         }
     }
 
-    private void CheckForNearbyNPCs()
+    private void FindNearestNpc()
     {
-        Collider[] nearbyObjects = Physics.OverlapSphere(transform.position, interactionRange);
-        
-        NPCController closestNPC = null;
-        float closestDistance = interactionRange;
+        NPCController[] npcs = FindObjectsOfType<NPCController>();
+        NPCController best = null;
+        float bestDistance = float.MaxValue;
 
-        foreach (Collider col in nearbyObjects)
+        foreach (NPCController npc in npcs)
         {
-            NPCController npc = col.GetComponent<NPCController>();
-            if (npc != null)
+            if (npc == null || npc.IsBoss()) continue;
+
+            float distance = Vector3.Distance(transform.position, npc.transform.position);
+            if (distance <= interactionRadius && distance < bestDistance)
             {
-                float distance = Vector3.Distance(transform.position, col.transform.position);
-                if (distance < closestDistance)
-                {
-                    closestDistance = distance;
-                    closestNPC = npc;
-                }
+                best = npc;
+                bestDistance = distance;
             }
         }
 
-        if (closestNPC != currentNPC)
-        {
-            currentNPC = closestNPC;
-            canInteract = (currentNPC != null);
-            
-            if (canInteract)
-            {
-                Debug.Log($"Can interact with {currentNPC.GetNPCId()}");
-                // TODO: Show interaction prompt UI
-            }
-        }
+        currentNpc = best;
     }
 
-    private void ShowDialogueOptions()
+    private void Interact()
     {
-        if (currentNPC == null) return;
+        if (currentNpc == null) return;
 
-        // Generate context-appropriate dialogue options
-        NPCMemory memory = currentNPC.GetMemory();
-        List<string> options = GenerateDialogueOptions(memory);
+        string action = actionCycle[interactionCount % actionCycle.Length];
+        string response = currentNpc.InteractWithPlayer(action);
+        NPCMemory memory = currentNpc.GetMemory();
+        string relation = memory != null && NPCMemoryManager.Instance != null
+            ? NPCMemoryManager.Instance.GetRelationshipLevel(memory.relationshipScore)
+            : "Unknown";
 
-        // Display options in UI
-        dialogueChoicesPanel.SetActive(true);
-
-        for (int i = 0; i < choiceButtons.Length && i < options.Count; i++)
+        if (dialogueUI != null)
         {
-            choiceTexts[i].text = options[i];
-            choiceButtons[i].gameObject.SetActive(true);
-            
-            // Set up button click handler
-            int optionIndex = i; // Capture for closure
-            choiceButtons[i].onClick.RemoveAllListeners();
-            choiceButtons[i].onClick.AddListener(() => SelectDialogueOption(options[optionIndex]));
+            dialogueUI.ShowDialogue(currentNpc.GetNPCId(), response, relation);
         }
 
-        // Hide unused buttons
-        for (int i = options.Count; i < choiceButtons.Length; i++)
-        {
-            choiceButtons[i].gameObject.SetActive(false);
-        }
-    }
-
-    private List<string> GenerateDialogueOptions(NPCMemory memory)
-    {
-        List<string> options = new List<string>();
-
-        // Get relationship level
-        string relationship = NPCMemoryManager.Instance.GetRelationshipLevel(memory.relationshipScore);
-
-        // Generate context-appropriate options
-        switch (relationship)
-        {
-            case "Allied":
-                options.Add("Need any help with anything?");
-                options.Add("Share information about a quest");
-                options.Add("Ask for their assistance");
-                break;
-            
-            case "Friendly":
-                options.Add("How have you been?");
-                options.Add("Tell me about yourself");
-                options.Add("Any advice for me?");
-                break;
-            
-            case "Neutral":
-                options.Add("Greet them politely");
-                options.Add("Ask about local rumors");
-                options.Add("Inquire about their work");
-                break;
-            
-            case "Hostile":
-                options.Add("Try to make amends");
-                options.Add("Challenge them");
-                options.Add("Leave quietly");
-                break;
-            
-            case "Enemy":
-                options.Add("Threaten them");
-                options.Add("Attempt diplomacy");
-                options.Add("Prepare for combat");
-                break;
-        }
-
-        // Add a generic exit option
-        options.Add("Say goodbye");
-
-        return options;
-    }
-
-    private void SelectDialogueOption(string choice)
-    {
-        // Hide choices panel
-        dialogueChoicesPanel.SetActive(false);
-
-        // Send interaction to NPC
-        if (currentNPC != null)
-        {
-            currentNPC.InteractWithPlayer(choice);
-        }
-    }
-
-    // Public method to force interaction (for scripted events)
-    public void ForceInteraction(NPCController npc, string playerAction)
-    {
-        npc.InteractWithPlayer(playerAction);
-    }
-
-    // For boss combat - track player's combat actions
-    public void RecordCombatAction(string action)
-    {
-        if (currentNPC != null && currentNPC.IsBoss())
-        {
-            // Record this combat action for the boss to learn from
-            currentNPC.InteractWithPlayer($"combat_action: {action}");
-        }
+        Debug.Log($"[Interaction] action={action} npc={currentNpc.GetNPCId()} response={response} relation={relation}");
+        interactionCount++;
     }
 
     private void OnDrawGizmosSelected()
     {
-        // Visualize interaction range
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, interactionRange);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, interactionRadius);
     }
 }

@@ -14,19 +14,6 @@ public class GameInitializer : MonoBehaviour
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
-
-        EnsureComponent<NPCMemoryManager>();
-        EnsureComponent<ComboTracker>();
-
-        Debug.Log("[GameInitializer] Systems ready.");
-    }
-
-    private void EnsureComponent<T>() where T : Component
-    {
-        T existing = FindObjectOfType<T>();
-        if (existing == null)
-        {
-            gameObject.AddComponent<T>();
-        }
+        Debug.Log("GameInitializer ready (local-only).");
     }
 }

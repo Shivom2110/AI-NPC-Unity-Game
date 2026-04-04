@@ -1,6 +1,7 @@
+using System;
 using System.Collections.Generic;
 
-[System.Serializable]
+[Serializable]
 public class NPCInteraction
 {
     public string timestampIso;
@@ -10,19 +11,20 @@ public class NPCInteraction
     public int relationshipChange;
 }
 
-[System.Serializable]
+[Serializable]
 public class NPCMemory
 {
     public string npcId;
     public string personality;
     public int relationshipScore;
+
     public List<NPCInteraction> interactions = new List<NPCInteraction>();
     public Dictionary<string, string> learnedPatterns = new Dictionary<string, string>();
 
-    public NPCMemory(string id, string personalityType, int score)
+    public NPCMemory(string id, string personalityName, int startingRelationship = 0)
     {
         npcId = id;
-        personality = personalityType;
-        relationshipScore = score;
+        personality = personalityName;
+        relationshipScore = startingRelationship;
     }
 }

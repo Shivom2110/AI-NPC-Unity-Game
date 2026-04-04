@@ -1,155 +1,118 @@
+using System.Collections.Generic;
 using UnityEngine;
-using AINPC.Systems.Events;
 
 public class PlayerCombatController : MonoBehaviour
 {
-    [Header("Combat Settings")]
-    [SerializeField] private float attackDamage = 25f;
-    [SerializeField] private float attackRange = 2f;
-    [SerializeField] private float attackCooldown = 1f;
+    [Header("Targeting")]
+    [SerializeField] private float attackRange = 3f;
+    [SerializeField] private float bossSearchRadius = 15f;
 
-    [Header("Input Keys")]
-    [SerializeField] private KeyCode lightAttackKey = KeyCode.Mouse0;
-    [SerializeField] private KeyCode heavyAttackKey = KeyCode.Mouse1;
-    [SerializeField] private KeyCode dodgeKey = KeyCode.Space;
-    [SerializeField] private KeyCode blockKey = KeyCode.LeftShift;
+    [Header("Keys")]
+    [SerializeField] private KeyCode autoAttackKey = KeyCode.Mouse0;
+    [SerializeField] private KeyCode attack2Key = KeyCode.Mouse1;
+    [SerializeField] private KeyCode attack3Key = KeyCode.Q;
+    [SerializeField] private KeyCode attack4Key = KeyCode.R;
+    [SerializeField] private KeyCode ultimateKey = KeyCode.F;
 
-    private float lastAttackTime;
+    private readonly Dictionary<PlayerAttackType, float> damages = new Dictionary<PlayerAttackType, float>();
+    private readonly Dictionary<PlayerAttackType, float> cooldowns = new Dictionary<PlayerAttackType, float>();
+    private readonly Dictionary<PlayerAttackType, float> lastUsedTimes = new Dictionary<PlayerAttackType, float>();
+
     private BossAIController currentBoss;
-    private string lastAction = "";
 
-    private void PublishCombatEvent(PlayerEventType type, string meta = "")
+    private void Start()
     {
-        string bossId = currentBoss != null ? currentBoss.gameObject.name : "";
-        EventBus.Publish(new PlayerEvent(type, npcId: "", bossId: bossId, meta: meta));
-    }
+        damages[PlayerAttackType.AutoAttack] = 10f;
+        damages[PlayerAttackType.Attack2] = 50f;
+        damages[PlayerAttackType.Attack3] = 100f;
+        damages[PlayerAttackType.Attack4] = 150f;
+        damages[PlayerAttackType.Ultimate] = 300f;
 
-    void Update()
-    {
-        // Find nearby boss
-        if (currentBoss == null)
+        cooldowns[PlayerAttackType.AutoAttack] = 0f;
+        cooldowns[PlayerAttackType.Attack2] = 3f;
+        cooldowns[PlayerAttackType.Attack3] = 5f;
+        cooldowns[PlayerAttackType.Attack4] = 7f;
+        cooldowns[PlayerAttackType.Ultimate] = 10f;
+
+        foreach (PlayerAttackType attack in damages.Keys)
         {
-            FindNearbyBoss();
-        }
-
-        HandleCombatInput();
-    }
-
-    private void FindNearbyBoss()
-    {
-        Collider[] nearbyObjects = Physics.OverlapSphere(transform.position, 15f);
-        foreach (Collider col in nearbyObjects)
-        {
-            BossAIController boss = col.GetComponent<BossAIController>();
-            if (boss != null)
-            {
-                currentBoss = boss;
-                Debug.Log("Boss detected!");
-                break;
-            }
+            lastUsedTimes[attack] = -999f;
         }
     }
 
-    private void HandleCombatInput()
+    private void Update()
     {
-        if (Time.time - lastAttackTime < attackCooldown)
+        FindNearestBoss();
+        HandleInput();
+    }
+
+    private void HandleInput()
+    {
+        if (Input.GetKeyDown(autoAttackKey)) TryAttack(PlayerAttackType.AutoAttack);
+        if (Input.GetKeyDown(attack2Key)) TryAttack(PlayerAttackType.Attack2);
+        if (Input.GetKeyDown(attack3Key)) TryAttack(PlayerAttackType.Attack3);
+        if (Input.GetKeyDown(attack4Key)) TryAttack(PlayerAttackType.Attack4);
+        if (Input.GetKeyDown(ultimateKey)) TryAttack(PlayerAttackType.Ultimate);
+    }
+
+    private void TryAttack(PlayerAttackType attackType)
+    {
+        float now = Time.time;
+        float remainingCooldown = GetRemainingCooldown(attackType);
+
+        if (remainingCooldown > 0f)
+        {
+            Debug.Log($"[Player] {attackType} on cooldown: {remainingCooldown:F1}s left");
             return;
-
-        // Light Attack
-        if (Input.GetKeyDown(lightAttackKey))
-        {
-            PerformLightAttack();
-        }
-        // Heavy Attack
-        else if (Input.GetKeyDown(heavyAttackKey))
-        {
-            PerformHeavyAttack();
-        }
-        // Dodge
-        else if (Input.GetKeyDown(dodgeKey))
-        {
-            PerformDodge();
-        }
-        // Block
-        else if (Input.GetKey(blockKey))
-        {
-            PerformBlock();
-        }
-    }
-
-    private void PerformLightAttack()
-    {
-        Debug.Log("Player: Light Attack!");
-        lastAction = "light_attack";
-        lastAttackTime = Time.time;
-
-        PublishCombatEvent(PlayerEventType.AttackMid, "light");
-
-        // Try to hit boss
-        if (currentBoss != null && IsInRange(currentBoss.transform))
-        {
-            currentBoss.TakeDamage(attackDamage);
-            currentBoss.OnPlayerCombatAction("light_attack");
         }
 
-        // TODO: Play attack animation
-    }
+        lastUsedTimes[attackType] = now;
 
-    private void PerformHeavyAttack()
-    {
-        Debug.Log("Player: Heavy Attack!");
-        lastAction = "heavy_attack";
-        lastAttackTime = Time.time;
-
-        PublishCombatEvent(PlayerEventType.AttackHigh, "heavy");
-
-        // Try to hit boss
-        if (currentBoss != null && IsInRange(currentBoss.transform))
+        if (ComboTracker.Instance != null)
         {
-            currentBoss.TakeDamage(attackDamage * 2);
-            currentBoss.OnPlayerCombatAction("heavy_attack");
+            ComboTracker.Instance.AddAttack(attackType, now);
         }
-
-        // TODO: Play heavy attack animation
-    }
-
-    private void PerformDodge()
-    {
-        Debug.Log("Player: Dodge!");
-        lastAction = "dodge";
-
-        // Determine dodge direction
-        float horizontal = Input.GetAxis("Horizontal");
-        string dodgeDirection = horizontal < 0 ? "dodge_left" : (horizontal > 0 ? "dodge_right" : "dodge_back");
-
-        if (dodgeDirection == "dodge_left") PublishCombatEvent(PlayerEventType.DodgeLeft);
-        else if (dodgeDirection == "dodge_right") PublishCombatEvent(PlayerEventType.DodgeRight);
-        else PublishCombatEvent(PlayerEventType.DodgeBack);
 
         if (currentBoss != null)
         {
-            currentBoss.OnPlayerCombatAction(dodgeDirection);
-        }
+            currentBoss.OnPlayerCombatAction(attackType, now);
 
-        // TODO: Play dodge animation and grant i-frames
-    }
-
-    private void PerformBlock()
-    {
-        if (lastAction != "block") // Only log once
-        {
-            Debug.Log("Player: Blocking!");
-            lastAction = "block";
-
-            PublishCombatEvent(PlayerEventType.Block);
-
-            if (currentBoss != null)
+            if (IsInRange(currentBoss.transform))
             {
-                currentBoss.OnPlayerCombatAction("block");
+                currentBoss.TakeDamage(damages[attackType]);
             }
         }
 
-        // TODO: Activate blocking state
+        Debug.Log($"[Player] Used {attackType} | damage={damages[attackType]} | cooldown={cooldowns[attackType]}");
+    }
+
+    private float GetRemainingCooldown(PlayerAttackType attackType)
+    {
+        float elapsed = Time.time - lastUsedTimes[attackType];
+        return Mathf.Max(0f, cooldowns[attackType] - elapsed);
+    }
+
+    private void FindNearestBoss()
+    {
+        Collider[] nearby = Physics.OverlapSphere(transform.position, bossSearchRadius);
+
+        BossAIController best = null;
+        float bestDistance = float.MaxValue;
+
+        foreach (Collider col in nearby)
+        {
+            BossAIController boss = col.GetComponent<BossAIController>();
+            if (boss == null) continue;
+
+            float distance = Vector3.Distance(transform.position, boss.transform.position);
+            if (distance < bestDistance)
+            {
+                best = boss;
+                bestDistance = distance;
+            }
+        }
+
+        currentBoss = best;
     }
 
     private bool IsInRange(Transform target)
@@ -157,23 +120,12 @@ public class PlayerCombatController : MonoBehaviour
         return Vector3.Distance(transform.position, target.position) <= attackRange;
     }
 
-    // Called when player takes damage (call this from your damage system)
-    public void TakeDamage(float damage)
-    {
-        // TODO: Reduce health, play hurt animation
-        Debug.Log($"Player took {damage} damage!");
-    }
-
-    // Track player's current combat style for boss AI
-    public string GetCombatStyle()
-    {
-        // Simple analysis - you can make this more sophisticated
-        return lastAction;
-    }
-
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackRange);
+
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, bossSearchRadius);
     }
 }

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using UnityEngine;
 
 public class NPCMemoryManager : MonoBehaviour
@@ -17,52 +16,47 @@ public class NPCMemoryManager : MonoBehaviour
         }
 
         Instance = this;
-        DontDestroyOnLoad(gameObject);
-        Debug.Log("[NPCMemoryManager] Local memory ready.");
     }
 
-    // personality is optional now so older calls compile
-    public Task<NPCMemory> LoadNPCMemory(string npcId, string personality = "neutral")
+    public NPCMemory LoadNPCMemory(string npcId, string personality = "neutral")
     {
-        if (!store.TryGetValue(npcId, out var mem))
+        if (!store.TryGetValue(npcId, out NPCMemory memory))
         {
-            mem = new NPCMemory(npcId, personality, 0);
-            store[npcId] = mem;
+            memory = new NPCMemory(npcId, personality, 0);
+            store[npcId] = memory;
         }
-        return Task.FromResult(mem);
+
+        return memory;
     }
 
-    public Task RecordInteraction(string npcId, string action, string response, string outcome, int delta = 0)
+    public void RecordInteraction(string npcId, string playerAction, string npcResponse, string outcome, int relationshipDelta = 0)
     {
-        if (!store.TryGetValue(npcId, out var mem))
+        if (!store.TryGetValue(npcId, out NPCMemory memory))
         {
-            mem = new NPCMemory(npcId, "neutral", 0);
-            store[npcId] = mem;
+            memory = new NPCMemory(npcId, "neutral", 0);
+            store[npcId] = memory;
         }
 
-        mem.relationshipScore += delta;
-        mem.interactions.Add(new NPCInteraction
+        memory.relationshipScore += relationshipDelta;
+        memory.interactions.Add(new NPCInteraction
         {
             timestampIso = System.DateTime.UtcNow.ToString("o"),
-            playerAction = action,
-            npcResponse = response,
+            playerAction = playerAction,
+            npcResponse = npcResponse,
             outcome = outcome,
-            relationshipChange = delta
+            relationshipChange = relationshipDelta
         });
-
-        return Task.CompletedTask;
     }
 
-    public Task UpdateLearnedPattern(string npcId, string key, string value)
+    public void UpdateLearnedPattern(string npcId, string key, string value)
     {
-        if (!store.TryGetValue(npcId, out var mem))
+        if (!store.TryGetValue(npcId, out NPCMemory memory))
         {
-            mem = new NPCMemory(npcId, "neutral", 0);
-            store[npcId] = mem;
+            memory = new NPCMemory(npcId, "neutral", 0);
+            store[npcId] = memory;
         }
 
-        mem.learnedPatterns[key] = value;
-        return Task.CompletedTask;
+        memory.learnedPatterns[key] = value;
     }
 
     public string GetRelationshipLevel(int score)
