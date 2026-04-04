@@ -1,178 +1,275 @@
-# 🎮 AI-NPC Unity Game
+# 🎮 AI-Powered NPC PC Game
 
-A single-player Unity RPG prototype focused on **adaptive NPCs and bosses** that learn player behavior **locally**, without cloud AI or external services.
+A Unity-based PC game featuring **adaptive NPC dialogue** and **real-time boss AI** that learns from player behavior.
 
-✔ Runs fully offline  
-✔ Cross-platform (Windows & macOS)  
-✔ Deterministic, debuggable systems  
+This project focuses on **low-latency, local AI systems** without using cloud APIs.
 
 ---
 
-## 🎯 Project Goal
+# 📌 Project Overview
 
-Build a game where:
-- NPCs remember player interactions
-- Relationships evolve over time
-- Bosses adapt to player combat patterns
-- All learning happens **locally in-memory**
-
-No OpenAI. No Firebase. No paid APIs.
+This game demonstrates:
+- Adaptive NPC conversations based on memory
+- Bosses that analyze player attack patterns
+- Real-time combo detection and counter strategies
+- Fully local architecture (no Firebase / OpenAI)
 
 ---
 
-## 🧠 Core Systems (Current)
+# 🧠 Core Features
 
-### NPC Memory (Local)
-- Each NPC has an `NPCMemory`
-- Tracks:
-  - Relationship score
-  - Interaction history
-  - Learned patterns
-- Stored locally via `NPCMemoryManager`
-
-### Dialogue (Rule-Based)
-- Dialogue generated locally
-- Influenced by:
-  - NPC personality
-  - Relationship level
-  - Player actions
-- Deterministic and easy to extend
-
-### Boss Adaptive AI
-- Boss tracks player combat actions
-- Learns frequency patterns (attack, dodge, block)
-- Predicts next move using simple statistics
-- Chooses counter-actions dynamically
+## 1. NPC System (Adaptive Dialogue)
+- NPC remembers player interactions
+- Dialogue changes based on:
+  - relationship score
+  - previous actions
+  - personality
+- Uses variation + memory callbacks to feel human-like
 
 ---
 
-## 🗂️ Key Folder Structure
+## 2. Boss AI System (Adaptive Combat)
+
+### Boss Difficulty Scaling
+
+| Boss | Health | Combo Read Depth |
+|------|--------|------------------|
+| Boss 1 | 2000 | 2 |
+| Boss 2 | 3000 | 3 |
+| Boss 3 | 4000 | 4 |
+
+### Behavior
+- Tracks player attack history
+- Detects combos using timing
+- Selects counter strategies dynamically
+
+---
+
+## 3. Player Combat System
+
+| Attack | Damage | Cooldown |
+|--------|--------|----------|
+| Auto Attack | 10 | 0 sec |
+| Attack 2 | 50 | 3 sec |
+| Attack 3 | 100 | 5 sec |
+| Attack 4 | 150 | 7 sec |
+| Ultimate | 300 | 10 sec |
+
+---
+
+## 4. Combo Detection System
+
+- Combos are based on time gap between attacks
+- If attacks occur within threshold → same combo
+- If delay is large → combo resets
+
+Example:
+Fast attacks → combo  
+Delayed attack → new combo  
+
+---
+
+## 5. Counter System
+
+Boss selects counters based on:
+- last N attacks in combo
+- predefined mapping
+
+Example:
+- Attack2 → Dodge  
+- Attack3 → HeavyCounter  
+- Ultimate → SpecialCounter  
+
+---
+
+# 🏗️ Project Structure
 
 Assets/
+│
 ├── Scripts/
 │   ├── Core/
 │   │   ├── GameInitializer.cs
 │   │   └── NPCMemoryManager.cs
+│   │
 │   ├── NPC/
 │   │   ├── NPCController.cs
 │   │   ├── BossAIController.cs
 │   │   └── NPCMemory.cs
+│   │
 │   ├── Player/
-│   │   ├── PlayerInteractionManager.cs
-│   │   └── PlayerCombatController.cs
+│   │   ├── PlayerCombatController.cs
+│   │   └── PlayerInteractionManager.cs
+│   │
+│   ├── Systems/
+│   │   └── Learning/
+│   │       ├── PlayerAttackType.cs
+│   │       ├── AttackEvent.cs
+│   │       ├── ComboTracker.cs
+│   │       └── BossCounterLibrary.cs
+│   │
+│   └── UI/
+│       ├── DialogueUIController.cs
+│       └── BossDebugUIController.cs
 │
 ├── Scenes/
-│   └── HubArea.unity
-│
-└── Documentation/
-└── README.md
+│   ├── HubArea.unity
+│   ├── Boss1Arena.unity
+│   ├── Boss2Arena.unity
+│   └── Boss3Arena.unity
 
 ---
 
-## ⚙️ Setup (Windows & macOS)
+# ⚙️ Setup Instructions
 
-### Requirements
-- **Unity 2021.3 LTS**
-- **Git**
-- No external services required
+## Requirements
 
-### Clone Repository
+### Windows
+- Unity Hub
+- Unity 2021.3 LTS
+- Visual Studio
+- Git
 
-**Windows (PowerShell / Git Bash)**
-```powershell
-git clone https://github.com/Shivom2110/AI-NPC-Unity-Game.git
-
-macOS (Terminal)
-
-git clone https://github.com/Shivom2110/AI-NPC-Unity-Game.git
-
-
-⸻
-
-Open in Unity
-	1.	Open Unity Hub
-	2.	Click Add Project
-	3.	Select the cloned folder
-	4.	Open Assets/Scenes/HubArea.unity
-
-⸻
-
-Scene Initialization (Required)
-
-In HubArea:
-	1.	Create empty GameObject → Systems
-	2.	Add components:
-	•	GameInitializer
-	•	NPCMemoryManager
-
-This must exist for NPCs and bosses to function.
-
-⸻
-
-🎮 Controls (Current)
-	•	WASD — Move
-	•	Mouse — Look
-	•	E — Interact
-	•	Left Click — Light attack
-	•	Right Click — Heavy attack
-	•	Space — Dodge
-	•	Shift — Block
-
-(Same on Windows & macOS)
-
-⸻
-
-👥 Team Roles
-	•	Shivom — Architecture & Core Systems
-	•	Shaan — UI / Scene / Visual Design
-	•	Ayush — NPC & Boss Behavior Logic
-
-⸻
-
-🌿 Git Workflow (Important)
-	•	❌ Do NOT commit directly to main
-	•	✅ Create a feature branch
-	•	✅ Push to your branch
-	•	✅ Open a Pull Request
-
-Example:
-
-git checkout -b your-name/feature
-git push -u origin your-name/feature
-
-
-⸻
-
-🚧 Current Status
-	•	✅ Compile-stable
-	•	✅ Local memory + learning
-	•	✅ Boss AI functional
-	•	🚧 UI polish pending
-	•	🚧 Visual assets pending
-
-⸻
-
-🚀 Immediate Next Steps
-	1.	Minimal dialogue UI
-	2.	One NPC fully playable
-	3.	One boss arena prototype
-	4.	Balance learning speed
-	5.	Visual + animation pass
-
-⸻
-
-🧠 Design Principles
-	•	Local-first logic
-	•	Simple > complex
-	•	Predictable behavior
-	•	Easy debugging
-	•	Extend only when needed
-
-⸻
-
-Status: Stable foundation ✅
-Platform: Windows & macOS
-Branch: main
-Last Updated: Jan 2026
+### Mac
+- Unity Hub
+- Unity 2021.3 LTS
+- VS Code
+- .NET SDK
+- Git
 
 ---
+
+## Clone Project
+
+git clone https://github.com/Shivom2110/AI-NPC-Unity-Game.git  
+cd AI-NPC-Unity-Game  
+
+---
+
+## Open in Unity
+
+1. Open Unity Hub  
+2. Add project folder  
+3. Open project  
+4. Wait for compilation  
+
+---
+
+# 🧩 Scene Setup (IMPORTANT)
+
+## Systems Object
+Create empty GameObject → Systems  
+
+Add:
+- GameInitializer  
+
+---
+
+## Player Setup
+- Capsule (or model)
+- Add:
+  - PlayerCombatController
+  - PlayerInteractionManager
+- Tag = Player  
+
+---
+
+## NPC Setup
+Add NPCController  
+
+Values:
+npcId = merchant_01  
+personality = merchant  
+isBoss = false  
+
+---
+
+## Boss Setup
+Add BossAIController  
+
+Example (Boss 1):
+health = 2000  
+comboReadDepth = 2  
+
+---
+
+# 🎮 Controls
+
+| Key | Action |
+|-----|-------|
+| Left Click | Auto Attack |
+| Right Click | Attack 2 |
+| Q | Attack 3 |
+| R | Attack 4 |
+| F | Ultimate |
+| E | Interact |
+
+---
+
+# 🧪 How to Run
+
+1. Open HubArea  
+2. Press Play  
+3. Interact with NPC  
+4. Attack boss  
+5. Observe combo + counter system  
+
+---
+
+# ⚡ Design Decisions
+
+## Why no OpenAI / Firebase?
+- avoids latency  
+- ensures real-time gameplay  
+- simplifies debugging  
+- keeps system reliable  
+
+---
+
+## AI Approach Used
+- rule-based adaptive system  
+- memory-driven dialogue  
+- combo pattern recognition  
+
+---
+
+# 📊 Current Status
+
+## Completed
+- NPC memory system  
+- adaptive dialogue  
+- player combat system  
+- combo tracking  
+- boss AI system  
+
+## Remaining
+- scene setup  
+- UI polish  
+- testing  
+
+---
+
+# 👥 Team
+
+- Shivom → System architecture, memory, integration  
+- Ayush → AI logic, combat balancing  
+- Shaan → UI, scene design  
+
+---
+
+# 🔐 Security Notes
+
+Do NOT commit:
+- API keys  
+- credentials  
+- private configs  
+
+---
+
+# 🚀 Summary
+
+This project demonstrates:
+- real-time adaptive gameplay  
+- AI-like NPC interaction without APIs  
+- scalable system design in Unity  
+
+Built for performance, adaptability, and simplicity.

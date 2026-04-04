@@ -1,3 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p Assets/Documentation
+
+cat > Assets/Documentation/README.md <<'MD'
 # AI-Powered NPC PC Game
 
 A Unity-based PC game featuring one adaptive NPC and three adaptive bosses. The system is fully local, uses C#, and avoids cloud services for low-latency gameplay.
@@ -153,3 +159,33 @@ Remaining:
 
 ## Notes
 This project prioritizes functional gameplay systems over final art polish. The main innovation is adaptive behavior using lightweight local logic rather than cloud-based AI.
+MD
+
+cat > README.md <<'MD'
+# AI-Powered NPC PC Game
+
+See the main project documentation here:
+
+`Assets/Documentation/README.md`
+
+This Unity project contains:
+- adaptive NPC dialogue with local memory
+- 3 adaptive bosses with combo-based counters
+- 5 player attacks with cooldown and damage logic
+- local-only gameplay systems for low-latency response
+MD
+
+rm -f Assets/Documentation/ARCHITECTURE.md
+rm -f Assets/Documentation/PROJECT_TIMELINE.md
+rm -f Assets/Documentation/QUICK_REFERENCE.md
+rm -f Assets/Documentation/SETUP_GUIDE.md
+
+echo "Documentation refreshed."
+echo "Kept:"
+echo "  Assets/Documentation/README.md"
+echo "  README.md"
+echo "Deleted:"
+echo "  Assets/Documentation/ARCHITECTURE.md"
+echo "  Assets/Documentation/PROJECT_TIMELINE.md"
+echo "  Assets/Documentation/QUICK_REFERENCE.md"
+echo "  Assets/Documentation/SETUP_GUIDE.md"
