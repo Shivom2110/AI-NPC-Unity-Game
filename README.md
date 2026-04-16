@@ -1,273 +1,160 @@
-# 🎮 AI-Powered NPC PC Game
+# AI-NPC-Unity-Game
 
-A Unity-based PC game featuring **adaptive NPC dialogue** and **real-time boss AI** that learns from player behavior.
+This repository contains a Unity 6 third-person prototype focused on adaptive gameplay. The current project combines memory-driven NPC interactions, boss combat that reacts to player behavior, and locally persisted difficulty tuning. Everything runs locally in C# without cloud services or external AI APIs.
 
-This project focuses on **low-latency, local AI systems** without using cloud APIs.
+## What The Project Currently Includes
 
----
+- A main gameplay scene at `Assets/Scenes/HubArea.unity`
+- Relationship-based NPC dialogue using in-memory interaction history
+- Adaptive boss combat with combo reading, parry and dodge windows, and phase pressure
+- Player combat with light/heavy attacks, parry, flashy attack, ultimate, and roll
+- Runtime combat analytics that adjust difficulty based on player performance
+- Local persistence for the player's adaptive combat profile
+- Runtime-generated HUD elements for player and boss combat feedback
 
-# 📌 Project Overview
+## Main Tech Stack
 
-This game demonstrates:
-- Adaptive NPC conversations based on memory
-- Bosses that analyze player attack patterns
-- Real-time combo detection and counter strategies
-- Fully local architecture (no Firebase / OpenAI)
+- Unity Editor `6000.3.10f1`
+- Universal Render Pipeline
+- Unity Input System
+- Unity AI Navigation
+- C# gameplay scripts
 
----
+## Repo Structure
 
-# 🧠 Core Features
+```text
+AI-NPC-Unity-Game/
+├── Assets/
+│   ├── Animations/              # Combat and character animation assets
+│   ├── Audio/                   # Audio content
+│   ├── BrokenVector/            # Environment and imported dungeon assets
+│   ├── Materials/               # Materials and rendering assets
+│   ├── Models/                  # Character, weapon, and environment models
+│   ├── Prefabs/                 # Player, camera, and gameplay prefabs
+│   ├── Rallba/                  # Imported boss/character asset pack
+│   ├── Resources/               # Runtime-loadable configs
+│   ├── Scenes/                  # Main Unity scenes
+│   ├── Scripts/
+│   │   ├── Core/                # Initializers and memory manager
+│   │   ├── NPC/                 # NPC dialogue and boss entry logic
+│   │   ├── Player/              # Movement, combat, health, weapons
+│   │   ├── Systems/Combat/      # Adaptive combat, analytics, difficulty
+│   │   ├── Systems/Dialogue/    # Dialogue data and rule helpers
+│   │   ├── Systems/Events/      # Event bus and combat event types
+│   │   ├── Systems/Learning/    # Combo tracking and counter logic
+│   │   ├── Systems/Persistence/ # Local save helpers
+│   │   └── UI/                  # Dialogue, HUD, and death screen UI
+│   ├── Settings/                # URP and rendering settings
+│   └── Textures/                # Texture assets
+├── Packages/                    # Unity package manifest and lockfile
+├── ProjectSettings/             # Unity project settings
+├── Library/                     # Unity-generated local cache
+├── Logs/                        # Unity-generated logs
+└── UserSettings/                # Unity editor user settings
+```
 
-## 1. NPC System (Adaptive Dialogue)
-- NPC remembers player interactions
-- Dialogue changes based on:
-  - relationship score
-  - previous actions
-  - personality
-- Uses variation + memory callbacks to feel human-like
+## Key Gameplay Systems
 
----
+### NPC memory and dialogue
 
-## 2. Boss AI System (Adaptive Combat)
+- `Assets/Scripts/Core/GameInitializer.cs` keeps shared systems alive across scenes
+- `Assets/Scripts/Core/NPCMemoryManager.cs` stores relationship score and interaction history per NPC
+- `Assets/Scripts/NPC/NPCController.cs` changes responses based on personality, relationship state, and recent interactions
+- `Assets/Scripts/UI/DialogueUIController.cs` displays prompts and dialogue lines
 
-### Boss Difficulty Scaling
+### Adaptive combat
 
-| Boss | Health | Combo Read Depth |
-|------|--------|------------------|
-| Boss 1 | 2000 | 2 |
-| Boss 2 | 3000 | 3 |
-| Boss 3 | 4000 | 4 |
+- `Assets/Scripts/Systems/Combat/CombatSystemBootstrap.cs` auto-creates core combat systems at runtime
+- `Assets/Scripts/NPC/BossAIController.cs` handles boss movement, counters, attack windows, and adaptive scaling
+- `Assets/Scripts/Systems/Learning/ComboTracker.cs` tracks current combos and estimates player skill from combat timing
+- `Assets/Scripts/Systems/Combat/CombatTracker.cs` records combat performance for live analytics
+- `Assets/Scripts/Systems/Combat/FightProgressionManager.cs` adjusts difficulty and saves the player's evolving profile
+- `Assets/Scripts/Systems/Combat/PlayerSkillProfile.cs` persists adaptive combat stats between sessions
 
-### Behavior
-- Tracks player attack history
-- Detects combos using timing
-- Selects counter strategies dynamically
+### Player systems
 
----
+- `Assets/Scripts/Player/PlayerMovement.cs` handles exploration and combat movement
+- `Assets/Scripts/Player/SwordManager.cs` toggles drawn vs. sheathed weapons
+- `Assets/Scripts/Player/PlayerCombatController.cs` handles attacks, parry, roll, and boss targeting
+- `Assets/Scripts/Player/PlayerHealth.cs` manages HP, damage, death, and temporary invulnerability
+- `Assets/Scripts/UI/PlayerHUD.cs` builds the player and boss HUD automatically at runtime
 
-## 3. Player Combat System
+## Setup Instructions
 
-| Attack | Damage | Cooldown |
-|--------|--------|----------|
-| Auto Attack | 10 | 0 sec |
-| Attack 2 | 50 | 3 sec |
-| Attack 3 | 100 | 5 sec |
-| Attack 4 | 150 | 7 sec |
-| Ultimate | 300 | 10 sec |
+### Requirements
 
----
-
-## 4. Combo Detection System
-
-- Combos are based on time gap between attacks
-- If attacks occur within threshold → same combo
-- If delay is large → combo resets
-
-Example:
-Fast attacks → combo  
-Delayed attack → new combo  
-
----
-
-## 5. Counter System
-
-Boss selects counters based on:
-- last N attacks in combo
-- predefined mapping
-
-Example:
-- Attack2 → Dodge  
-- Attack3 → HeavyCounter  
-- Ultimate → SpecialCounter  
-
----
-
-# 🏗️ Project Structure
-
-Assets/
-├── Scripts/
-│   ├── Core/
-│   │   ├── GameInitializer.cs
-│   │   └── NPCMemoryManager.cs
-│   │
-│   ├── NPC/
-│   │   ├── NPCController.cs
-│   │   ├── BossAIController.cs
-│   │   └── NPCMemory.cs
-│   │
-│   ├── Player/
-│   │   ├── PlayerCombatController.cs
-│   │   └── PlayerInteractionManager.cs
-│   │
-│   ├── Systems/
-│   │   └── Learning/
-│   │       ├── PlayerAttackType.cs
-│   │       ├── AttackEvent.cs
-│   │       ├── ComboTracker.cs
-│   │       └── BossCounterLibrary.cs
-│   │
-│   └── UI/
-│       ├── DialogueUIController.cs
-│       └── BossDebugUIController.cs
-│
-└── Scenes/
-├── HubArea.unity
-├── Boss1Arena.unity
-├── Boss2Arena.unity
-└── Boss3Arena.unity
----
-
-# ⚙️ Setup Instructions
-
-## Requirements
-
-### Windows
 - Unity Hub
-- Unity 2021.3 LTS
-- Visual Studio
+- Unity Editor `6000.3.10f1`
 - Git
+- A code editor such as VS Code, Rider, or Visual Studio
 
-### Mac
-- Unity Hub
-- Unity 2021.3 LTS
-- VS Code
-- .NET SDK
-- Git
+### Clone and open
 
----
+```bash
+git clone https://github.com/Shivom2110/AI-NPC-Unity-Game.git
+cd AI-NPC-Unity-Game
+```
 
-## Clone Project
+1. Open Unity Hub.
+2. Add this repository as a project.
+3. Use Unity Editor `6000.3.10f1`.
+4. Let Unity finish importing packages and compiling scripts.
+5. Open `Assets/Scenes/HubArea.unity`.
+6. Press Play.
 
-git clone https://github.com/Shivom2110/AI-NPC-Unity-Game.git  
-cd AI-NPC-Unity-Game  
+## User Guide
 
----
+### Basic controls
 
-## Open in Unity
+- `W`, `A`, `S`, `D`: Move
+- `Left Shift`: Run
+- `Space`: Jump while weapons are sheathed
+- `F`: Draw or sheathe weapons
 
-1. Open Unity Hub  
-2. Add project folder  
-3. Open project  
-4. Wait for compilation  
+### Combat controls
 
----
+These actions are available when weapons are drawn.
 
-# 🧩 Scene Setup (IMPORTANT)
+- `Left Mouse`: Light attack
+- `Right Mouse`: Heavy attack
+- `Q`: Parry
+- `E`: Flashy attack
+- `R`: Ultimate
+- Double tap `Space`: Roll
 
-## Systems Object
-Create empty GameObject → Systems  
+### Interaction controls
 
-Add:
-- GameInitializer  
+- `E`: Interact with nearby NPCs when you are not using it for combat
 
----
+### Play flow
 
-## Player Setup
-- Capsule (or model)
-- Add:
-  - PlayerCombatController
-  - PlayerInteractionManager
-- Tag = Player  
+1. Open `HubArea`.
+2. Move with `WASD` and approach the playable area.
+3. Draw your weapons with `F` before testing combat.
+4. Use parries, dodges, and combo variation to influence adaptive difficulty.
+5. Approach NPCs and press `E` to cycle through dialogue interactions.
 
----
+## Working In New Scenes
 
-## NPC Setup
-Add NPCController  
+When creating or wiring a new scene, make sure it includes:
 
-Values:
-npcId = merchant_01  
-personality = merchant  
-isBoss = false  
+- A player object tagged `Player`
+- `PlayerMovement`, `PlayerCombatController`, `SwordManager`, and `PlayerHealth` on the player setup
+- NPCs with `NPCController` for dialogue testing
+- Bosses with `BossAIController` for adaptive combat testing
+- A trigger using `BossEntranceTrigger` if you want a staged boss entrance
 
----
+Combat support systems are auto-bootstrapped at runtime, and `GameInitializer` ensures shared memory and combo tracking stay available across scene loads.
 
-## Boss Setup
-Add BossAIController  
+## Local Data And Persistence
 
-Example (Boss 1):
-health = 2000  
-comboReadDepth = 2  
+- The adaptive combat profile is saved locally through `PlayerSkillProfile`
+- Save data is written under Unity's `Application.persistentDataPath`
+- `LocalSaveService` also supports JSON-based local saves under a `saves` folder inside that persistent data path
 
----
+## Important Notes
 
-# 🎮 Controls
-
-| Key | Action |
-|-----|-------|
-| Left Click | Auto Attack |
-| Right Click | Attack 2 |
-| Q | Attack 3 |
-| R | Attack 4 |
-| F | Ultimate |
-| E | Interact |
-
----
-
-# 🧪 How to Run
-
-1. Open HubArea  
-2. Press Play  
-3. Interact with NPC  
-4. Attack boss  
-5. Observe combo + counter system  
-
----
-
-# ⚡ Design Decisions
-
-## Why no OpenAI / Firebase?
-- avoids latency  
-- ensures real-time gameplay  
-- simplifies debugging  
-- keeps system reliable  
-
----
-
-## AI Approach Used
-- rule-based adaptive system  
-- memory-driven dialogue  
-- combo pattern recognition  
-
----
-
-# 📊 Current Status
-
-## Completed
-- NPC memory system  
-- adaptive dialogue  
-- player combat system  
-- combo tracking  
-- boss AI system  
-
-## Remaining
-- scene setup  
-- UI polish  
-- testing  
-
----
-
-# 👥 Team
-
-- Shivom → System architecture, memory, integration  
-- Ayush → AI logic, combat balancing  
-- Shaan → UI, scene design  
-
----
-
-# 🔐 Security Notes
-
-Do NOT commit:
-- API keys  
-- credentials  
-- private configs  
-
----
-
-# 🚀 Summary
-
-This project demonstrates:
-- real-time adaptive gameplay  
-- AI-like NPC interaction without APIs  
-- scalable system design in Unity  
-
-Built for performance, adaptability, and simplicity.
+- This project is currently centered around the authored gameplay code and the `HubArea` scene
+- Imported art and animation packs remain under `Assets/BrokenVector`, `Assets/Kevin Iglesias`, and `Assets/Rallba`
+- `Library`, `Logs`, and `UserSettings` are local Unity-generated folders rather than core gameplay source
+- This `README.md` is the single maintained documentation file for the repository
