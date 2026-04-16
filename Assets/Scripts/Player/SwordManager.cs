@@ -1,145 +1,122 @@
 using UnityEngine;
 
+/// <summary>
+/// Press F to show both weapons (drawn) or hide them (sheathed).
+/// Weapons stay attached to their hand bones at all times.
+/// </summary>
 public class SwordManager : MonoBehaviour
 {
-    // ─────────────────────────────────────────────
-    //  Weapon references
-    // ─────────────────────────────────────────────
-    [Header("Weapons")]
+    [Header("── Weapons ──────────────────────────────")]
     public Transform sword;
     public Transform dagger;
 
-    // ─────────────────────────────────────────────
-    //  Skeleton bones
-    // ─────────────────────────────────────────────
-    [Header("Bones")]
+    [Header("── Bones ───────────────────────────────")]
     public Transform rightHandBone;
     public Transform leftHandBone;
-    public Transform backBone;
 
-    // ─────────────────────────────────────────────
-    //  Sword – Drawn (Right Hand)
-    // ─────────────────────────────────────────────
-    [Header("Sword – Drawn (Right Hand)")]
-    public Vector3 swordDrawnPosition = new Vector3(0f, 0f, 0f);
-    public Vector3 swordDrawnRotation = new Vector3(73.084f, 94.803f, -84.981f);
-    public Vector3 swordDrawnScale    = new Vector3(1f, 1f, 1f);
+    [Header("── Sword Position (Right Hand) ─────────")]
+    public Vector3 swordPosition = new Vector3(-0.126f, 0.04f, 0.437f);
+    public Vector3 swordRotation = new Vector3(0f, 0f, 0f);
+    public Vector3 swordScale    = new Vector3(1f, 1f, 1f);
 
-    // ─────────────────────────────────────────────
-    //  Dagger – Drawn (Left Hand)
-    // ─────────────────────────────────────────────
-    [Header("Dagger – Drawn (Left Hand)")]
-    public Vector3 daggerDrawnPosition = new Vector3(-0.11f, 0.022f, 0.204f);
-    public Vector3 daggerDrawnRotation = new Vector3(-250.454f, 90f, -90f);
-    public Vector3 daggerDrawnScale    = new Vector3(1000f, 1000f, 1000f);
+    [Header("── Dagger Position (Left Hand) ─────────")]
+    public Vector3 daggerPosition = new Vector3(-0.1f, 0.04f, 0.15f);
+    public Vector3 daggerRotation = new Vector3(-1.93f, -8.603f, -5.363f);
+    public Vector3 daggerScale    = new Vector3(1000f, 1000f, 1000f);
 
-    // ─────────────────────────────────────────────
-    //  Sword – Sheathed (Back)
-    // ─────────────────────────────────────────────
-    [Header("Sword – Sheathed (Back)")]
-    public Vector3 swordSheathPosition = new Vector3(0f, 0.1f, -0.05f);
-    public Vector3 swordSheathRotation = new Vector3(0f, 0f, 90f);
-    public Vector3 swordSheathScale    = new Vector3(1f, 1f, 1f);
+    [Header("── Input ───────────────────────────────")]
+    public KeyCode drawSheathKey = KeyCode.F;
 
-    // ─────────────────────────────────────────────
-    //  Dagger – Sheathed (Hip / Back)
-    // ─────────────────────────────────────────────
-    [Header("Dagger – Sheathed (Hip)")]
-    public Vector3 daggerSheathPosition = new Vector3(-0.1f, 0f, -0.05f);
-    public Vector3 daggerSheathRotation = new Vector3(-250.454f, 90f, -90f);
-    public Vector3 daggerSheathScale    = new Vector3(1000f, 1000f, 1000f);
-
-    // ─────────────────────────────────────────────
-    //  Input
-    // ─────────────────────────────────────────────
-    [Header("Input")]
-    public KeyCode drawSheathKey   = KeyCode.F;
-    public KeyCode switchWeaponKey = KeyCode.Tab;
-
-    // ─────────────────────────────────────────────
-    //  State
-    // ─────────────────────────────────────────────
+    // Read by KarevCombatBrain
+    public bool IsDrawn => _drawn;
     public enum ActiveWeapon { Sword, Dagger }
-
-    public bool         IsDrawn       => _drawn;
     public ActiveWeapon CurrentWeapon => _activeWeapon;
-
-    private bool         _drawn        = false;
     private ActiveWeapon _activeWeapon = ActiveWeapon.Sword;
 
-    // ─────────────────────────────────────────────
-    //  Unity lifecycle
-    // ─────────────────────────────────────────────
+    private bool     _drawn    = false;
+    private Animator _animator;
+
     void Start()
     {
-        Sheath();
+        _animator = GetComponentInChildren<Animator>();
+        AttachToHands();
+        SetVisible(false);
     }
 
     void Update()
     {
         if (Input.GetKeyDown(drawSheathKey))
             Toggle();
-
-        if (Input.GetKeyDown(switchWeaponKey) && _drawn)
-            SwitchWeapon();
-    }
-
-    // ─────────────────────────────────────────────
-    //  Public API
-    // ─────────────────────────────────────────────
-    public void Draw()
-    {
-        _drawn = true;
-        Place(sword,  rightHandBone, swordDrawnPosition,  swordDrawnRotation,  swordDrawnScale);
-        Place(dagger, leftHandBone,  daggerDrawnPosition, daggerDrawnRotation, daggerDrawnScale);
-    }
-
-    public void Sheath()
-    {
-        _drawn = false;
-        Place(sword,  backBone, swordSheathPosition,  swordSheathRotation,  swordSheathScale);
-        Place(dagger, backBone, daggerSheathPosition, daggerSheathRotation, daggerSheathScale);
     }
 
     public void Toggle()
     {
-        if (_drawn) Sheath();
-        else        Draw();
+        _drawn = !_drawn;
+        SetVisible(_drawn);
+        SetCombatIdle(_drawn);
     }
 
-    public void SwitchWeapon()
+    public void Draw()
     {
-        _activeWeapon = (_activeWeapon == ActiveWeapon.Sword)
-            ? ActiveWeapon.Dagger
-            : ActiveWeapon.Sword;
+        _drawn = true;
+        SetVisible(true);
+        SetCombatIdle(true);
+    }
+
+    public void Sheathe()
+    {
+        _drawn = false;
+        SetVisible(false);
+        SetCombatIdle(false);
     }
 
     public void SetActiveWeapon(ActiveWeapon weapon) => _activeWeapon = weapon;
 
-    // ─────────────────────────────────────────────
-    //  Helper
-    // ─────────────────────────────────────────────
-    void Place(Transform weapon, Transform parent, Vector3 pos, Vector3 rot, Vector3 scale)
+    void SetVisible(bool visible)
     {
-        if (weapon == null || parent == null) return;
-        weapon.SetParent(parent);
-        weapon.localPosition = pos;
-        weapon.localRotation = Quaternion.Euler(rot);
-        weapon.localScale    = scale;
+        if (sword  != null) sword.gameObject.SetActive(visible);
+        if (dagger != null) dagger.gameObject.SetActive(visible);
     }
 
-    // ─────────────────────────────────────────────
-    //  Debug UI
-    // ─────────────────────────────────────────────
+    void SetCombatIdle(bool active)
+    {
+        if (_animator != null)
+            _animator.SetBool("IsDrawn", active);
+    }
+
+    void AttachToHands()
+    {
+        Attach(sword,  rightHandBone, swordPosition,  swordRotation,  swordScale);
+        Attach(dagger, leftHandBone,  daggerPosition, daggerRotation, daggerScale);
+    }
+
+    void Attach(Transform weapon, Transform bone,
+                Vector3 pos, Vector3 rot, Vector3 desiredWorldScale)
+    {
+        if (weapon == null || bone == null) return;
+
+        weapon.SetParent(bone, worldPositionStays: false);
+        weapon.localPosition = pos;
+        weapon.localRotation = Quaternion.Euler(rot);
+
+        Vector3 ps = bone.lossyScale;
+        weapon.localScale = new Vector3(
+            desiredWorldScale.x / Mathf.Max(ps.x, 0.0001f),
+            desiredWorldScale.y / Mathf.Max(ps.y, 0.0001f),
+            desiredWorldScale.z / Mathf.Max(ps.z, 0.0001f)
+        );
+    }
+
     void OnGUI()
     {
-        string label = _drawn ? $"SHEATH  [{_activeWeapon}]" : "DRAW";
+        GUIStyle style = new GUIStyle(GUI.skin.button)
+        {
+            fontSize  = 14,
+            fontStyle = FontStyle.Bold
+        };
 
-        if (GUI.Button(new Rect(10, 10, 200, 50), label))
+        string label = _drawn ? "[ F ]  SHEATHE" : "[ F ]  DRAW";
+        if (GUI.Button(new Rect(10, 10, 180, 45), label, style))
             Toggle();
-
-        if (_drawn && GUI.Button(new Rect(10, 65, 200, 40),
-            $"SWITCH → {(_activeWeapon == ActiveWeapon.Sword ? "Dagger" : "Sword")}"))
-            SwitchWeapon();
     }
 }

@@ -16,6 +16,7 @@ public class PlayerMovement : MonoBehaviour
     private Transform cameraTransform;
     private Vector3 velocity;
     private Animator characterAnimator;
+    private SwordManager swordManager;
     private bool isGrounded;
 
     void Start()
@@ -23,6 +24,7 @@ public class PlayerMovement : MonoBehaviour
         controller        = GetComponent<CharacterController>();
         cameraTransform   = Camera.main.transform;
         characterAnimator = GetComponentInChildren<Animator>();
+        swordManager      = GetComponent<SwordManager>();
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible   = false;
@@ -54,36 +56,59 @@ public class PlayerMovement : MonoBehaviour
         if (Keyboard.current.aKey.isPressed) h = -1f;
         if (Keyboard.current.dKey.isPressed) h =  1f;
 
+        bool inCombat = swordManager != null && swordManager.IsDrawn;
+
+        if (inCombat)
+            MoveCombat(h, v);
+        else
+            MoveNormal(h, v);
+    }
+
+    // Normal movement: character rotates to face movement direction
+    void MoveNormal(float h, float v)
+    {
         Vector3 input = new Vector3(h, 0f, v).normalized;
+        if (input.magnitude < 0.1f) return;
 
-        if (input.magnitude >= 0.1f)
-        {
-            // Direction relative to camera
-            float targetAngle = Mathf.Atan2(input.x, input.z)
-                                * Mathf.Rad2Deg
-                                + cameraTransform.eulerAngles.y;
+        float targetAngle = Mathf.Atan2(input.x, input.z)
+                            * Mathf.Rad2Deg
+                            + cameraTransform.eulerAngles.y;
 
-            // Smooth rotation
-            float angle = Mathf.LerpAngle(
-                transform.eulerAngles.y,
-                targetAngle,
-                rotationSpeed * Time.deltaTime);
-            transform.rotation = Quaternion.Euler(0f, angle, 0f);
+        float angle = Mathf.LerpAngle(
+            transform.eulerAngles.y,
+            targetAngle,
+            rotationSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Euler(0f, angle, 0f);
 
-            // Move direction
-            Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f)
-                              * Vector3.forward;
+        Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
 
-            bool isRunning = Keyboard.current.leftShiftKey.isPressed;
-            float speed    = isRunning ? runSpeed : walkSpeed;
+        bool isRunning = Keyboard.current.leftShiftKey.isPressed;
+        float speed    = isRunning ? runSpeed : walkSpeed;
 
-            controller.Move(moveDir.normalized * speed * Time.deltaTime);
-        }
+        controller.Move(moveDir.normalized * speed * Time.deltaTime);
+    }
+
+    // Combat movement: character faces camera, A/D strafe, W/S move forward/back
+    void MoveCombat(float h, float v)
+    {
+        // Lock facing to camera's horizontal direction
+        float camY = cameraTransform.eulerAngles.y;
+        float angle = Mathf.LerpAngle(transform.eulerAngles.y, camY, rotationSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.Euler(0f, angle, 0f);
+
+        if (Mathf.Abs(h) < 0.1f && Mathf.Abs(v) < 0.1f) return;
+
+        // Move relative to where character is facing (strafe left/right, walk forward/back)
+        Vector3 moveDir = transform.right * h + transform.forward * v;
+        controller.Move(moveDir.normalized * walkSpeed * Time.deltaTime);
     }
 
     void HandleJump()
     {
-        if (Keyboard.current.spaceKey.wasPressedThisFrame && isGrounded)
+        bool inCombat = swordManager != null && swordManager.IsDrawn;
+
+        // In combat mode space is reserved for double-tap roll — no jumping
+        if (!inCombat && Keyboard.current.spaceKey.wasPressedThisFrame && isGrounded)
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
 
