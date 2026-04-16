@@ -3,6 +3,8 @@ using UnityEngine;
 
 public class BossAIController : MonoBehaviour
 {
+    public static BossAIController ActiveBoss { get; private set; }
+
     [Header("Boss Identity")]
     [SerializeField] private string bossName = "Boss 1";
 
@@ -50,6 +52,10 @@ public class BossAIController : MonoBehaviour
     [SerializeField] private Animator  bossAnimator;
     [SerializeField] private Transform player;
 
+    [Header("Adaptive Combat")]
+    [SerializeField] private AdaptiveBossController adaptiveBoss;
+    [SerializeField] private bool debugCombatLogs = true;
+
     // Animator hashes
     private static readonly int SpeedHash       = Animator.StringToHash("Speed");
     private static readonly int IsAliveHash     = Animator.StringToHash("IsAlive");
@@ -74,6 +80,7 @@ public class BossAIController : MonoBehaviour
     private float _scaledDodgeWindow;
     private float _scaledMinInterval;
     private float _scaledMaxInterval;
+    private DifficultySettings _difficultySettings;
     private float _nextDifficultyUpdate  = 0f;
     private int   _lastKnownSkillLevel   = 1;
 
@@ -83,6 +90,10 @@ public class BossAIController : MonoBehaviour
     private float _parryWindowEnd  = 0f;
     private float _dodgeWindowEnd  = 0f;
     private float _pendingDamage   = 0f;
+    private float _pendingDamageScale = 1f;
+    private BossAttack _activeAttack;
+    private bool _attackActive = false;
+    private bool _attackFullyCountered = false;
 
     // Roar state
     private float _roarEndTime = 0f;
@@ -93,6 +104,20 @@ public class BossAIController : MonoBehaviour
     private enum BossState { Hidden, WalkingIn, Roaring, Combat, Dead }
     private BossState _state = BossState.Hidden;
 
+    void OnEnable()
+    {
+        ActiveBoss = this;
+        CombatEventSystem.OnDifficultyAdjusted += HandleDifficultyAdjusted;
+    }
+
+    void OnDisable()
+    {
+        CombatEventSystem.OnDifficultyAdjusted -= HandleDifficultyAdjusted;
+
+        if (ActiveBoss == this)
+            ActiveBoss = null;
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────
     void Start()
     {
@@ -101,6 +126,12 @@ public class BossAIController : MonoBehaviour
         if (bossAnimator == null)
             bossAnimator = GetComponentInChildren<Animator>();
 
+        if (adaptiveBoss == null)
+            adaptiveBoss = GetComponent<AdaptiveBossController>();
+
+        if (adaptiveBoss == null)
+            adaptiveBoss = gameObject.AddComponent<AdaptiveBossController>();
+
         if (player == null)
         {
             GameObject p = GameObject.FindGameObjectWithTag("Player");
@@ -108,7 +139,10 @@ public class BossAIController : MonoBehaviour
         }
 
         transform.position = spawnPosition;
-        ApplySkillScaling(1); // start at skill 1
+        ApplySkillScaling(1);
+        ApplyDifficultySettings(FightProgressionManager.Instance != null
+            ? FightProgressionManager.Instance.CurrentSettings
+            : DifficultyEngine.EvaluateSkillScore(50f, null));
         gameObject.SetActive(false);
     }
 
@@ -118,7 +152,6 @@ public class BossAIController : MonoBehaviour
         if (_state == BossState.Roaring)   HandleRoar();
         if (_state == BossState.Combat)
         {
-            HandleAdaptiveDifficulty();
             HandleCombatMovement();
             HandleCombatAI();
             CheckAttackWindows();
@@ -215,7 +248,7 @@ public class BossAIController : MonoBehaviour
     void HandleCombatMovement()
     {
         if (player == null) return;
-        if (_parryWindowOpen || _dodgeWindowOpen) return;
+        if (_attackActive) return;
 
         float dist = Vector3.Distance(transform.position, player.position);
 
@@ -240,57 +273,66 @@ public class BossAIController : MonoBehaviour
     // ── Combat AI ─────────────────────────────────────────────────
     void HandleCombatAI()
     {
-        if (Time.time >= nextAttackTime && !_parryWindowOpen && !_dodgeWindowOpen)
+        if (_attackActive) return;
+
+        if (Time.time >= nextAttackTime)
         {
             if (player != null &&
                 Vector3.Distance(transform.position, player.position) <= preferredDistance + 2f)
             {
-                TriggerRandomAttack();
+                TriggerAdaptiveAttack();
                 nextAttackTime = Time.time + Random.Range(_scaledMinInterval, _scaledMaxInterval);
             }
         }
     }
 
-    void TriggerRandomAttack()
+    void TriggerAdaptiveAttack()
     {
-        if (bossAnimator == null) return;
+        if (bossAnimator == null || adaptiveBoss == null) return;
 
-        float heavyChance = Mathf.Clamp01(currentDifficultyPhase * 0.1f);
-        bool  useHeavy    = Random.value < heavyChance;
+        float playerMaxHealth = PlayerHealth.Instance != null ? PlayerHealth.Instance.MaxHealth : 200f;
+        _activeAttack = adaptiveBoss.SelectNextAttack(GetHealthPercent(), playerMaxHealth);
+        _pendingDamageScale = 1f;
+        _attackFullyCountered = false;
+        _attackActive = true;
 
-        int roll;
-        if (useHeavy)
-            roll = Random.Range(2, 4);
-        else
-            roll = Random.Range(0, 2);
+        _pendingDamage = _activeAttack.damage;
+        _parryWindowOpen = _activeAttack.isParryable && !_activeAttack.guaranteedNoCounter;
+        _dodgeWindowOpen = !_activeAttack.isParryable || _activeAttack.isUndodgeable;
+        _parryWindowEnd = Time.time + _activeAttack.telegraphDuration;
+        _dodgeWindowEnd = _parryWindowEnd;
 
-        switch (roll)
+        switch (_activeAttack.id)
         {
-            case 0:
+            case BossAttackId.QuickSlash:
                 bossAnimator.ResetTrigger(AttackHash);
                 bossAnimator.SetTrigger(AttackHash);
-                OpenParryWindow(_scaledLightDamage);
-                Debug.Log($"[{bossName}] LIGHT ATTACK ({_scaledLightDamage:F1} dmg) — parry with Q!");
                 break;
-            case 1:
-                bossAnimator.ResetTrigger(KickHash);
-                bossAnimator.SetTrigger(KickHash);
-                OpenParryWindow(_scaledLightDamage);
-                Debug.Log($"[{bossName}] KICK ({_scaledLightDamage:F1} dmg) — parry with Q!");
-                break;
-            case 2:
+            case BossAttackId.HeavySlam:
+            case BossAttackId.DelayedHeavy:
                 bossAnimator.ResetTrigger(HeavyAttackHash);
                 bossAnimator.SetTrigger(HeavyAttackHash);
-                OpenDodgeWindow(_scaledHeavyDamage);
-                Debug.Log($"[{bossName}] HEAVY ATTACK ({_scaledHeavyDamage:F1} dmg) — dodge with double Space!");
                 break;
-            case 3:
+            case BossAttackId.SpinAttack:
+                bossAnimator.ResetTrigger(KickHash);
+                bossAnimator.SetTrigger(KickHash);
+                break;
+            case BossAttackId.GrabAttack:
+            case BossAttackId.UnstoppableRush:
                 bossAnimator.ResetTrigger(JumpAttackHash);
                 bossAnimator.SetTrigger(JumpAttackHash);
-                OpenDodgeWindow(_scaledHeavyDamage);
-                Debug.Log($"[{bossName}] JUMP ATTACK ({_scaledHeavyDamage:F1} dmg) — dodge with double Space!");
+                break;
+            case BossAttackId.ComboString:
+            case BossAttackId.LastResort:
+                bossAnimator.ResetTrigger(AttackHash);
+                bossAnimator.SetTrigger(AttackHash);
                 break;
         }
+
+        CombatEventSystem.RaiseBossAttackStart(_activeAttack, _activeAttack.telegraphDuration);
+
+        if (debugCombatLogs)
+            Debug.Log($"[{bossName}] {_activeAttack.name} telegraphed for {_activeAttack.telegraphDuration:F2}s ({_activeAttack.damage:F1} dmg)");
     }
 
     // ── Parry / Dodge Windows ─────────────────────────────────────
@@ -310,46 +352,59 @@ public class BossAIController : MonoBehaviour
 
     void CheckAttackWindows()
     {
-        if (_parryWindowOpen && Time.time > _parryWindowEnd)
+        if (_attackActive && Time.time > _parryWindowEnd)
         {
-            _parryWindowOpen = false;
-            DamagePlayer(_pendingDamage);
-            Debug.Log($"[{bossName}] attack landed — {_pendingDamage} dmg to player!");
-        }
+            if (!_attackFullyCountered)
+            {
+                float appliedDamage = _pendingDamage * _pendingDamageScale;
+                if (appliedDamage > 0f)
+                {
+                    DamagePlayer(appliedDamage, _activeAttack.attackType);
+                    if (debugCombatLogs)
+                        Debug.Log($"[{bossName}] attack landed — {appliedDamage:F1} dmg to player!");
+                }
+            }
 
-        if (_dodgeWindowOpen && Time.time > _dodgeWindowEnd)
-        {
-            _dodgeWindowOpen = false;
-            DamagePlayer(_pendingDamage);
-            Debug.Log($"[{bossName}] attack landed — {_pendingDamage} dmg to player!");
+            ClearActiveAttack();
         }
     }
 
     // ── Player Reactions ──────────────────────────────────────────
     public bool TryParry()
     {
-        if (!_parryWindowOpen) return false;
-
-        _parryWindowOpen = false;
-
-        if (bossAnimator != null)
-        {
-            bossAnimator.ResetTrigger(IsHurtHash);
-            bossAnimator.SetTrigger(IsHurtHash);
-        }
-
-        nextAttackTime = Time.time + Random.Range(minAttackInterval, maxAttackInterval) + 1.5f;
-        Debug.Log($"[{bossName}] PARRIED! Boss staggered.");
-        return true;
+        return TryParry(out _);
     }
 
     public bool TryDodge()
     {
-        if (!_dodgeWindowOpen) return false;
+        return RollSystem.Instance != null && RollSystem.Instance.IsInvincible;
+    }
 
-        _dodgeWindowOpen = false;
-        Debug.Log($"[{bossName}] attack DODGED!");
-        return true;
+    public bool TryParry(out ParryResolution resolution)
+    {
+        resolution = ParryWindow.Instance != null
+            ? ParryWindow.Instance.ResolveParryAttempt()
+            : default;
+
+        if (!_attackActive)
+            return resolution.success;
+
+        _pendingDamageScale = Mathf.Min(_pendingDamageScale, resolution.playerDamageScale <= 0f ? 0f : resolution.playerDamageScale);
+
+        if (resolution.grade == ParryTimingGrade.Perfect)
+        {
+            _attackFullyCountered = true;
+            TriggerBossHitReaction();
+            nextAttackTime = Time.time + Random.Range(_scaledMinInterval, _scaledMaxInterval) + 1.5f;
+            ClearActiveAttack();
+        }
+        else if (resolution.grade == ParryTimingGrade.Good)
+        {
+            TriggerBossHitReaction();
+            nextAttackTime = Mathf.Max(nextAttackTime, Time.time + 0.6f);
+        }
+
+        return resolution.success;
     }
 
     // ── Take Damage ───────────────────────────────────────────────
@@ -357,15 +412,37 @@ public class BossAIController : MonoBehaviour
     {
         if (_state == BossState.Dead) return;
 
-        currentHealth -= damage;
-        currentHealth  = Mathf.Max(0f, currentHealth);
+        float nextHealth = currentHealth - damage;
+        float nextHealthPercent = maxHealth <= 0f ? 0f : nextHealth / maxHealth;
+
+        if (adaptiveBoss != null && adaptiveBoss.TryTriggerSecondWind(nextHealthPercent, out float healPercent))
+        {
+            currentHealth = Mathf.Max(1f, maxHealth * healPercent);
+            ForceAdaptivePhaseAdvanceTo(BossCombatPhase.Phase4);
+            TriggerBossHitReaction();
+
+            if (debugCombatLogs)
+                Debug.Log($"[{bossName}] triggered second wind and healed to {currentHealth:F1}/{maxHealth:F1}");
+
+            return;
+        }
+
+        if (nextHealth <= 0f && adaptiveBoss != null && adaptiveBoss.PreventTrueDeath)
+        {
+            currentHealth = Mathf.Max(1f, maxHealth * 0.03f);
+            ForceAdaptivePhaseAdvanceTo(BossCombatPhase.Phase4);
+            TriggerBossHitReaction();
+
+            if (debugCombatLogs)
+                Debug.Log($"[{bossName}] refused defeat and clung to the last phase.");
+
+            return;
+        }
+
+        currentHealth = Mathf.Max(0f, nextHealth);
         UpdateDifficultyPhase();
 
-        if (bossAnimator != null)
-        {
-            bossAnimator.ResetTrigger(IsHurtHash);
-            bossAnimator.SetTrigger(IsHurtHash);
-        }
+        TriggerBossHitReaction();
 
         Debug.Log($"[{bossName}] took {damage} dmg. HP: {currentHealth}/{maxHealth} | Phase {currentDifficultyPhase}");
 
@@ -377,15 +454,20 @@ public class BossAIController : MonoBehaviour
     {
         _state = BossState.Dead;
         if (bossAnimator != null) bossAnimator.SetBool(IsAliveHash, false);
+        CombatEventSystem.RaiseBossDefeated();
         Debug.Log($"[{bossName}] defeated.");
         Destroy(gameObject, 3f);
     }
 
     // ── Helpers ───────────────────────────────────────────────────
-    void DamagePlayer(float damage)
+    void DamagePlayer(float damage, string attackType)
     {
         if (PlayerHealth.Instance != null)
-            PlayerHealth.Instance.TakeDamage(damage);
+        {
+            bool applied = PlayerHealth.Instance.TakeDamage(damage, attackType);
+            if (applied)
+                CombatEventSystem.RaiseBossAttackLand(damage);
+        }
         else
             Debug.LogWarning("[Boss] PlayerHealth not found!");
     }
@@ -402,8 +484,13 @@ public class BossAIController : MonoBehaviour
 
     void UpdateDifficultyPhase()
     {
-        float lostRatio        = (maxHealth - currentHealth) / maxHealth;
-        currentDifficultyPhase = Mathf.Clamp(1 + Mathf.FloorToInt(lostRatio * 10f), 1, 10);
+        int previousPhase = currentDifficultyPhase;
+        currentDifficultyPhase = adaptiveBoss != null
+            ? (int)adaptiveBoss.EvaluatePhase(GetHealthPercent())
+            : Mathf.Clamp(1 + Mathf.FloorToInt(((maxHealth - currentHealth) / maxHealth) * 10f), 1, 10);
+
+        if (previousPhase != currentDifficultyPhase)
+            CombatEventSystem.RaiseBossPhaseChange(currentDifficultyPhase);
     }
 
     float GetCurrentCounterCooldown() =>
@@ -412,15 +499,83 @@ public class BossAIController : MonoBehaviour
     public void OnPlayerCombatAction(PlayerAttackType attackType, float timeStamp)
     {
         if (_state != BossState.Combat) return;
-        if (ComboTracker.Instance == null) return;
 
-        List<AttackEvent> comboSlice = ComboTracker.Instance.GetLastComboSlice(comboReadDepth);
-        lastObservedCombo            = ComboTracker.Instance.BuildSignature(comboSlice);
+        List<AttackEvent> comboSlice = ComboTracker.Instance != null
+            ? ComboTracker.Instance.GetLastComboSlice(comboReadDepth)
+            : new List<AttackEvent>();
+
+        lastObservedCombo = ComboTracker.Instance != null
+            ? ComboTracker.Instance.BuildSignature(comboSlice)
+            : ComboHitSystem.Instance != null ? ComboHitSystem.Instance.CurrentComboSignature : "None";
 
         if (Time.time - lastCounterTime < GetCurrentCounterCooldown()) return;
 
-        lastCounterUsed = BossCounterLibrary.GetCounter(comboSlice);
+        lastCounterUsed = adaptiveBoss != null ? adaptiveBoss.CurrentPhase.ToString() : BossCounterLibrary.GetCounter(comboSlice);
         lastCounterTime = Time.time;
+    }
+
+    public void ApplyDifficultySettings(DifficultySettings settings)
+    {
+        _difficultySettings = settings;
+        adaptiveBoss?.ApplyDifficulty(settings);
+
+        float healthPercent = currentHealth <= 0f || maxHealth <= 0f ? 1f : currentHealth / maxHealth;
+        maxHealth = Mathf.Max(1f, settings.bossMaxHP);
+        currentHealth = currentHealth <= 0f ? maxHealth : Mathf.Clamp(maxHealth * healthPercent, 1f, maxHealth);
+
+        _scaledLightDamage = lightAttackDamage * settings.bossDamageMultiplier * settings.edgeMultiplier * settings.hiddenAssistMultiplier;
+        _scaledHeavyDamage = heavyAttackDamage * settings.bossDamageMultiplier * settings.edgeMultiplier * settings.hiddenAssistMultiplier;
+        _scaledParryWindow = settings.telegraphDuration;
+        _scaledDodgeWindow = settings.telegraphDuration;
+        _scaledMinInterval = settings.bossAttackIntervalMin;
+        _scaledMaxInterval = settings.bossAttackIntervalMax;
+    }
+
+    public void ForceAdaptivePhaseAdvance()
+    {
+        if (adaptiveBoss == null)
+            return;
+
+        ForceAdaptivePhaseAdvanceTo(adaptiveBoss.ForcePhaseAdvance());
+    }
+
+    public float GetHealthPercent()
+    {
+        return maxHealth <= 0f ? 0f : currentHealth / maxHealth;
+    }
+
+    private void ForceAdaptivePhaseAdvanceTo(BossCombatPhase phase)
+    {
+        int previousPhase = currentDifficultyPhase;
+        currentDifficultyPhase = (int)phase;
+        if (previousPhase != currentDifficultyPhase)
+            CombatEventSystem.RaiseBossPhaseChange(currentDifficultyPhase);
+
+        nextAttackTime = Mathf.Min(nextAttackTime, Time.time + 0.5f);
+    }
+
+    private void TriggerBossHitReaction()
+    {
+        if (bossAnimator == null)
+            return;
+
+        bossAnimator.ResetTrigger(IsHurtHash);
+        bossAnimator.SetTrigger(IsHurtHash);
+    }
+
+    private void ClearActiveAttack()
+    {
+        _attackActive = false;
+        _parryWindowOpen = false;
+        _dodgeWindowOpen = false;
+        _pendingDamage = 0f;
+        _pendingDamageScale = 1f;
+        _attackFullyCountered = false;
+    }
+
+    private void HandleDifficultyAdjusted(DifficultySettings settings)
+    {
+        ApplyDifficultySettings(settings);
     }
 
     // ── Getters ───────────────────────────────────────────────────

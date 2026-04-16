@@ -22,23 +22,54 @@ public class PlayerHealth : MonoBehaviour
         _currentHealth = maxHealth;
     }
 
+    void OnEnable()
+    {
+        CombatEventSystem.OnDifficultyAdjusted += HandleDifficultyAdjusted;
+    }
+
+    void OnDisable()
+    {
+        CombatEventSystem.OnDifficultyAdjusted -= HandleDifficultyAdjusted;
+
+        if (Instance == this)
+            Instance = null;
+    }
+
     public void GrantIframes(float duration)
     {
         _iframeEnd = Time.time + duration;
     }
 
-    public void TakeDamage(float damage)
+    public void SetMaxHealth(float newMaxHealth, bool preserveHealthPercentage)
     {
-        if (IsDead) return;
+        float clampedMaxHealth = Mathf.Max(1f, newMaxHealth);
+        float currentPercent = maxHealth <= 0f ? 1f : _currentHealth / maxHealth;
+
+        maxHealth = clampedMaxHealth;
+        _currentHealth = preserveHealthPercentage
+            ? maxHealth * currentPercent
+            : Mathf.Min(_currentHealth, maxHealth);
+    }
+
+    public void RestoreToPercent(float healthPercent)
+    {
+        _currentHealth = Mathf.Clamp01(healthPercent) * maxHealth;
+    }
+
+    public bool TakeDamage(float damage, string attackType = "boss")
+    {
+        if (IsDead) return false;
 
         if (IsInvincible)
         {
             Debug.Log("[Player] damage blocked by iframes!");
-            return;
+            return false;
         }
 
         _currentHealth -= damage;
         _currentHealth  = Mathf.Max(0f, _currentHealth);
+
+        CombatEventSystem.RaisePlayerDamaged(damage, attackType);
 
         Debug.Log($"[Player] took {damage} dmg. HP: {_currentHealth}/{maxHealth}");
 
@@ -46,6 +77,8 @@ public class PlayerHealth : MonoBehaviour
             Die();
         else
             PlayerAnimator.Instance?.TriggerHit();
+
+        return true;
     }
 
     private void Die()
@@ -64,11 +97,17 @@ public class PlayerHealth : MonoBehaviour
 
         // Show death screen after the animation has time to play
         Invoke(nameof(ShowDeathScreen), deathScreenDelay);
+        CombatEventSystem.RaisePlayerDefeated(false);
     }
 
     private void ShowDeathScreen()
     {
         if (DeathScreen.Instance != null)
             DeathScreen.Instance.Show();
+    }
+
+    private void HandleDifficultyAdjusted(DifficultySettings settings)
+    {
+        SetMaxHealth(settings.playerMaxHP, true);
     }
 }

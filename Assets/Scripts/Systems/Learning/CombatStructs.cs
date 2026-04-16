@@ -1,95 +1,148 @@
 using System;
+using System.Collections.Generic;
+using UnityEngine;
 
 /// <summary>Window type a player must use to counter a boss attack.</summary>
-public enum AttackWindowType { Parry, Dodge }
+public enum AttackWindowType
+{
+    Parry,
+    Dodge
+}
 
 /// <summary>Catalogue identifier for each boss attack.</summary>
 public enum BossAttackId
 {
-    LightStrike     = 0,
-    Kick            = 1,
-    HeavySlam       = 2,
-    JumpStrike      = 3,
-    SpinAttack      = 4,
-    GrabAttempt     = 5,
-    UnstoppableRush = 6,
+    QuickSlash,
+    HeavySlam,
+    SpinAttack,
+    GrabAttack,
+    DelayedHeavy,
+    ComboString,
+    UnstoppableRush,
+    LastResort
 }
 
-/// <summary>
-/// Immutable definition of a single boss attack.
-/// All timing values are base seconds — <see cref="DifficultySettings.TelegraphScale"/>
-/// is applied at runtime to shrink or expand the telegraph window based on player skill.
-/// </summary>
+/// <summary>Boss fight phase thresholds.</summary>
+public enum BossCombatPhase
+{
+    Phase1 = 1,
+    Phase2 = 2,
+    Phase3 = 3,
+    Phase4 = 4
+}
+
+/// <summary>Timing grade for a parry attempt.</summary>
+public enum ParryTimingGrade
+{
+    Perfect,
+    Good,
+    Late,
+    Miss
+}
+
+/// <summary>Timing grade for a dodge roll attempt.</summary>
+public enum RollTimingGrade
+{
+    Perfect,
+    Early,
+    Late,
+    Miss
+}
+
+/// <summary>Serializable definition of a boss attack.</summary>
 [Serializable]
 public struct BossAttack
 {
-    /// <summary>Catalogue identifier.</summary>
-    public BossAttackId Id;
+    public string name;
+    public float damage;
+    public bool isParryable;
+    public float telegraphDuration;
+    public string attackType;
+    public AnimationClip telegraph;
+    public AnimationClip attack;
 
-    /// <summary>Human-readable name shown in debug logs.</summary>
-    public string Name;
-
-    /// <summary>Multiplier applied to the boss's base damage value.</summary>
-    public float DamageMultiplier;
-
-    /// <summary>If true the player can neutralise this attack with a parry (Q).
-    /// If false the player must dodge (double Space) instead.</summary>
-    public bool IsParryable;
-
-    /// <summary>Base seconds from when the animation fires to when the hitbox opens.</summary>
-    public float TelegraphSeconds;
-
-    /// <summary>Seconds the hitbox remains active (i.e. how long the player has to react).</summary>
-    public float HitboxSeconds;
-
-    /// <summary>Seconds the boss is vulnerable / locked in recovery after the attack.</summary>
-    public float RecoverySeconds;
-
-    /// <summary>Earliest boss phase (1–4) in which this attack may be selected.</summary>
-    public int MinPhase;
-
-    /// <summary>Animator trigger hash fired at the start of the telegraph.</summary>
-    public int AnimatorTriggerHash;
+    public BossAttackId id;
+    public int minPhase;
+    public int maxPhase;
+    public bool isUnblockable;
+    public bool isUndodgeable;
+    public bool guaranteedNoCounter;
+    public int comboChainLength;
 }
 
-/// <summary>
-/// Live difficulty snapshot produced by <see cref="DifficultyEngine"/> and consumed by
-/// <see cref="BossAIController"/>, <see cref="PlayerCombatController"/>, and
-/// <see cref="FightProgressionManager"/>.
-/// All values are pre-interpolated — consumers apply them directly with no further math.
-/// </summary>
+/// <summary>Live adaptive difficulty snapshot consumed by combat systems.</summary>
+[Serializable]
 public struct DifficultySettings
 {
-    /// <summary>Multiplier on the boss's base attack damage (includes edge bonus).</summary>
-    public float BossDamageMultiplier;
+    public float bossDamageMultiplier;
+    public float bossAttackInterval;
+    public float parryableRatio;
+    public float playerMaxHP;
+    public float bossMaxHP;
+    public float playerDamageMultiplier;
+    public float telegraphDuration;
+    public float edgeMultiplier;
 
-    /// <summary>Multiplier on damage the player deals to the boss.</summary>
-    public float PlayerDamageMultiplier;
+    public float bossAttackIntervalMin;
+    public float bossAttackIntervalMax;
+    public float playerMaxStamina;
+    public float hiddenAssistMultiplier;
+}
 
-    /// <summary>Minimum seconds between boss attacks.</summary>
-    public float AttackIntervalMin;
+/// <summary>Combat summary persisted after each fight.</summary>
+[Serializable]
+public struct CombatData
+{
+    public float fightDuration;
+    public float averageReactionTime;
+    public float parrySuccessRate;
+    public float dodgeSuccessRate;
+    public float damageDealtTotal;
+    public float damageTakenTotal;
+    public int uniqueCombosUsed;
+    public float finalSkillScore;
+    public List<string> comboHistory;
+}
 
-    /// <summary>Maximum seconds between boss attacks.</summary>
-    public float AttackIntervalMax;
+/// <summary>Rolling combat analytics recalculated during the fight.</summary>
+[Serializable]
+public struct CombatAnalyticsSnapshot
+{
+    public float skillScore;
+    public float aggressionIndex;
+    public float patternPredictability;
+    public float adaptationRate;
+    public float averageReactionTime;
+    public float parrySuccessRate;
+    public float dodgeSuccessRate;
+    public float damageRatio;
+    public float comboVarietyScore;
+    public float patternRepetitionScore;
+    public float attackFrequency;
+    public float attackTime;
+    public float dodgeTime;
+    public float blockTime;
+    public string favoriteCombo;
+}
 
-    /// <summary>Seconds the parry window stays open after the boss hitbox activates.</summary>
-    public float ParryWindowSeconds;
+/// <summary>Detailed result of a parry attempt.</summary>
+[Serializable]
+public struct ParryResolution
+{
+    public bool success;
+    public bool shouldStaggerBoss;
+    public float timingPrecisionMs;
+    public float playerDamageScale;
+    public float counterDamageMultiplier;
+    public ParryTimingGrade grade;
+}
 
-    /// <summary>Seconds the dodge window stays open after the boss hitbox activates.</summary>
-    public float DodgeWindowSeconds;
-
-    /// <summary>Fraction of boss attacks that should be parryable (0 = all unparryable, 1 = all parryable).</summary>
-    public float ParryableRatio;
-
-    /// <summary>Multiplier on each attack's base telegraph duration (1.4 = 40% longer, 0.5 = 50% shorter).</summary>
-    public float TelegraphScale;
-
-    /// <summary>Target player max HP for this skill tier.</summary>
-    public float PlayerMaxHP;
-
-    /// <summary>Target boss max HP for this skill tier.</summary>
-    public float BossMaxHP;
-
-    /// <summary>Hidden boss-advantage factor applied on top of BossDamageMultiplier for expert players.</summary>
-    public float EdgeMultiplier;
+/// <summary>Detailed result of a dodge roll attempt.</summary>
+[Serializable]
+public struct RollResolution
+{
+    public bool success;
+    public float timingPrecisionMs;
+    public float playerDamageScale;
+    public RollTimingGrade grade;
 }

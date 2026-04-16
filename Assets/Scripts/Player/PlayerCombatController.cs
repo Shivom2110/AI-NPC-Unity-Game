@@ -1,8 +1,22 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class PlayerCombatController : MonoBehaviour
 {
+    public struct HudMoveData
+    {
+        public string DisplayName;
+        public string Keybind;
+        public string IconLabel;
+        public float Damage;
+        public float Cooldown;
+        public float RemainingCooldown;
+        public bool RequiresDrawnWeapon;
+        public bool IsUsable;
+        public Color AccentColor;
+    }
+
     [Header("References")]
     [SerializeField] private Animator           animator;
     [SerializeField] private SwordManager       swordManager;
@@ -43,6 +57,23 @@ public class PlayerCombatController : MonoBehaviour
     private float _lastSpaceTapTime = -999f;
 
     private BossAIController currentBoss;
+    private DifficultySettings _currentDifficulty;
+
+    void Awake()
+    {
+        if (GetComponent<PlayerHealth>() == null)
+            gameObject.AddComponent<PlayerHealth>();
+    }
+
+    void OnEnable()
+    {
+        CombatEventSystem.OnDifficultyAdjusted += HandleDifficultyAdjusted;
+    }
+
+    void OnDisable()
+    {
+        CombatEventSystem.OnDifficultyAdjusted -= HandleDifficultyAdjusted;
+    }
 
     // ── Init ──────────────────────────────────────────────────────
     void Start()
@@ -53,18 +84,22 @@ public class PlayerCombatController : MonoBehaviour
 
         damages[PlayerAttackType.AutoAttack] = 10f;
         damages[PlayerAttackType.Attack2]    = 50f;
-        damages[PlayerAttackType.Attack3]    = 100f;
+        damages[PlayerAttackType.Attack3]    = 200f;
         damages[PlayerAttackType.Attack4]    = 150f;
         damages[PlayerAttackType.Ultimate]   = 300f;
 
         cooldowns[PlayerAttackType.AutoAttack] = 0.6f;  // prevent spam
         cooldowns[PlayerAttackType.Attack2]    = 1.5f;
-        cooldowns[PlayerAttackType.Attack3]    = 5f;
+        cooldowns[PlayerAttackType.Attack3]    = FlashyCooldown;
         cooldowns[PlayerAttackType.Attack4]    = 7f;
-        cooldowns[PlayerAttackType.Ultimate]   = 10f;
+        cooldowns[PlayerAttackType.Ultimate]   = UltimateCooldown;
 
         foreach (PlayerAttackType attack in damages.Keys)
             lastUsedTimes[attack] = -999f;
+
+        _currentDifficulty = FightProgressionManager.Instance != null
+            ? FightProgressionManager.Instance.CurrentSettings
+            : DifficultyEngine.EvaluateSkillScore(50f, null);
     }
 
     // ── Update ────────────────────────────────────────────────────
@@ -76,18 +111,23 @@ public class PlayerCombatController : MonoBehaviour
 
     void HandleInput()
     {
+        Keyboard keyboard = Keyboard.current;
+        Mouse mouse = Mouse.current;
+        if (keyboard == null)
+            return;
+
         bool canAct = swordManager != null && swordManager.IsDrawn;
 
         if (canAct)
         {
-            if (Input.GetKeyDown(KeyCode.Mouse0)) TryAttack(PlayerAttackType.AutoAttack, triggerLight: true);
-            if (Input.GetKeyDown(KeyCode.Mouse1)) TryAttack(PlayerAttackType.Attack2,    triggerHeavy: true);
-            if (Input.GetKeyDown(KeyCode.Q))      TryParry();
-            if (Input.GetKeyDown(KeyCode.E))      TryFlashyAttack();
-            if (Input.GetKeyDown(KeyCode.R))      TryUltimate();
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame)  TryAttack(PlayerAttackType.AutoAttack, triggerLight: true);
+            if (mouse != null && mouse.rightButton.wasPressedThisFrame) TryAttack(PlayerAttackType.Attack2,    triggerHeavy: true);
+            if (keyboard.qKey.wasPressedThisFrame)                       TryParry();
+            if (keyboard.eKey.wasPressedThisFrame)                       TryFlashyAttack();
+            if (keyboard.rKey.wasPressedThisFrame)                       TryUltimate();
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (keyboard.spaceKey.wasPressedThisFrame)
             HandleSpaceTap();
     }
 
@@ -105,17 +145,33 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(ParryHash);
         }
 
-        bool parried = currentBoss != null && currentBoss.TryParry();
+        bool parried = false;
+        ParryResolution resolution = default;
+
+        if (currentBoss != null)
+            parried = currentBoss.TryParry(out resolution);
+        else if (ParryWindow.Instance != null)
+        {
+            resolution = ParryWindow.Instance.ResolveParryAttempt();
+            parried = resolution.success;
+        }
+
         ComboTracker.Instance?.ReportParry(parried);
 
         if (parried)
         {
-            currentBoss.TakeDamage(ParryCounterDamage);
-            Debug.Log($"[Player] PERFECT PARRY — dealt {ParryCounterDamage} counter damage!");
+            float counterDamage = GetScaledParryDamage(resolution.counterDamageMultiplier);
+            if (currentBoss != null)
+                currentBoss.TakeDamage(counterDamage);
+
+            CombatEventSystem.RaisePlayerAttack("parry_counter", true, counterDamage);
+            Debug.Log($"[Player] PERFECT PARRY — dealt {counterDamage:F1} counter damage!");
         }
         else
         {
-            Debug.Log("[Player] Parry (no attack to parry)");
+            Debug.Log(resolution.grade == ParryTimingGrade.Late
+                ? "[Player] Late parry — reduced damage only"
+                : "[Player] Parry (no attack to parry)");
         }
     }
 
@@ -136,11 +192,7 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(FlashyAttackHash);
         }
 
-        if (ComboTracker.Instance != null)
-            ComboTracker.Instance.AddAttack(PlayerAttackType.Attack3, Time.time);
-
-        if (currentBoss != null && IsInRange(currentBoss.transform))
-            currentBoss.TakeDamage(200f);
+        ExecuteAttack(PlayerAttackType.Attack3, "flash", damages[PlayerAttackType.Attack3]);
 
         Debug.Log("[Player] Flashy Attack!");
     }
@@ -162,11 +214,7 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(UltimateHash);
         }
 
-        if (currentBoss != null && IsInRange(currentBoss.transform))
-            currentBoss.TakeDamage(damages[PlayerAttackType.Ultimate]);
-
-        if (ComboTracker.Instance != null)
-            ComboTracker.Instance.AddAttack(PlayerAttackType.Ultimate, Time.time);
+        ExecuteAttack(PlayerAttackType.Ultimate, "ultimate", damages[PlayerAttackType.Ultimate]);
 
         Debug.Log("[Player] ULTIMATE!");
     }
@@ -190,6 +238,16 @@ public class PlayerCombatController : MonoBehaviour
     void TryRoll()
     {
         if (Time.time - _lastRollTime < RollCooldown) return;
+
+        RollResolution resolution = default;
+        bool startedRoll = RollSystem.Instance == null || RollSystem.Instance.TryStartRoll(out resolution);
+
+        if (!startedRoll)
+        {
+            Debug.Log("[Player] Not enough stamina to roll.");
+            return;
+        }
+
         _lastRollTime = Time.time;
 
         if (animator != null)
@@ -198,13 +256,9 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(RollHash);
         }
 
-        // Grant iframes for the duration of the roll
-        if (PlayerHealth.Instance != null)
-            PlayerHealth.Instance.GrantIframes(0.6f);
-
-        bool dodged = currentBoss != null && currentBoss.TryDodge();
+        bool dodged = RollSystem.Instance != null ? resolution.success : true;
         ComboTracker.Instance?.ReportDodge(dodged);
-        Debug.Log(dodged ? "[Player] DODGE SUCCESS!" : "[Player] Roll");
+        Debug.Log(dodged ? "[Player] Perfect roll timing!" : "[Player] Roll started.");
     }
 
     // ── Standard Attacks (LMB / RMB) ─────────────────────────────
@@ -229,15 +283,7 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(HeavyAttackHash);
         }
 
-        if (ComboTracker.Instance != null)
-            ComboTracker.Instance.AddAttack(attackType, Time.time);
-
-        if (currentBoss != null)
-        {
-            currentBoss.OnPlayerCombatAction(attackType, Time.time);
-            if (IsInRange(currentBoss.transform))
-                currentBoss.TakeDamage(damages[attackType]);
-        }
+        ExecuteAttack(attackType, ComboHitSystem.ToActionToken(attackType), damages[attackType]);
     }
 
     float GetRemainingCooldown(PlayerAttackType attackType)
@@ -249,28 +295,217 @@ public class PlayerCombatController : MonoBehaviour
     // ── Boss Detection ────────────────────────────────────────────
     void FindNearestBoss()
     {
-        Collider[] nearby   = Physics.OverlapSphere(transform.position, bossSearchRadius);
         BossAIController best = null;
-        float bestDist      = float.MaxValue;
+        float bestDist = float.MaxValue;
 
-        foreach (Collider col in nearby)
+        if (IsBossTargetable(BossAIController.ActiveBoss, out float activeBossDist))
         {
-            BossAIController boss = col.GetComponentInParent<BossAIController>();
-            if (boss == null) continue;
+            best = BossAIController.ActiveBoss;
+            bestDist = activeBossDist;
+        }
 
-            float dist = Vector3.Distance(transform.position, boss.transform.position);
-            if (dist < bestDist) { best = boss; bestDist = dist; }
+        if (best == null)
+        {
+            BossAIController[] bosses = FindObjectsOfType<BossAIController>();
+            foreach (BossAIController boss in bosses)
+            {
+                if (!IsBossTargetable(boss, out float dist))
+                    continue;
+
+                if (dist < bestDist)
+                {
+                    best = boss;
+                    bestDist = dist;
+                }
+            }
         }
 
         currentBoss = best;
     }
 
     // ── Cooldown Getters for HUD ──────────────────────────────────
+    public BossAIController CurrentBoss => currentBoss;
+    public bool IsWeaponDrawn => swordManager != null && swordManager.IsDrawn;
+
+    public int GetHudMoveCount() => 6;
+
+    public bool TryGetHudMoveData(int index, out HudMoveData moveData)
+    {
+        switch (index)
+        {
+            case 0:
+                moveData = BuildHudMoveData(
+                    "Slash", "LMB", "SL",
+                    GetDisplayedDamage(PlayerAttackType.AutoAttack),
+                    cooldowns[PlayerAttackType.AutoAttack],
+                    GetRemainingCooldown(PlayerAttackType.AutoAttack),
+                    requiresDrawnWeapon: true,
+                    new Color(0.83f, 0.67f, 0.25f));
+                return true;
+
+            case 1:
+                moveData = BuildHudMoveData(
+                    "Heavy", "RMB", "HV",
+                    GetDisplayedDamage(PlayerAttackType.Attack2),
+                    cooldowns[PlayerAttackType.Attack2],
+                    GetRemainingCooldown(PlayerAttackType.Attack2),
+                    requiresDrawnWeapon: true,
+                    new Color(0.77f, 0.42f, 0.23f));
+                return true;
+
+            case 2:
+                moveData = BuildHudMoveData(
+                    "Parry", "Q", "PR",
+                    GetScaledParryDamage(1f),
+                    ParryCooldown,
+                    GetTimedCooldownRemaining(_lastParryTime, ParryCooldown),
+                    requiresDrawnWeapon: true,
+                    new Color(0.33f, 0.7f, 0.67f));
+                return true;
+
+            case 3:
+                moveData = BuildHudMoveData(
+                    "Flash", "E", "FL",
+                    GetDisplayedDamage(PlayerAttackType.Attack3),
+                    FlashyCooldown,
+                    GetFlashyCooldownRemaining(),
+                    requiresDrawnWeapon: true,
+                    new Color(0.79f, 0.28f, 0.36f));
+                return true;
+
+            case 4:
+                moveData = BuildHudMoveData(
+                    "Roll", "2x SPACE", "RL",
+                    0f,
+                    RollCooldown,
+                    GetTimedCooldownRemaining(_lastRollTime, RollCooldown),
+                    requiresDrawnWeapon: false,
+                    new Color(0.41f, 0.58f, 0.86f));
+                return true;
+
+            case 5:
+                moveData = BuildHudMoveData(
+                    "Ultimate", "R", "ULT",
+                    GetDisplayedDamage(PlayerAttackType.Ultimate),
+                    UltimateCooldown,
+                    GetUltimateCooldownRemaining(),
+                    requiresDrawnWeapon: true,
+                    new Color(0.76f, 0.23f, 0.23f));
+                return true;
+        }
+
+        moveData = default;
+        return false;
+    }
+
     public float GetFlashyCooldownRemaining()   => Mathf.Max(0f, FlashyCooldown   - (Time.time - _lastFlashyTime));
     public float GetUltimateCooldownRemaining() => Mathf.Max(0f, UltimateCooldown - (Time.time - _lastUltimateTime));
 
+    private HudMoveData BuildHudMoveData(
+        string displayName,
+        string keybind,
+        string iconLabel,
+        float damage,
+        float cooldown,
+        float remainingCooldown,
+        bool requiresDrawnWeapon,
+        Color accentColor)
+    {
+        bool isUsable = !requiresDrawnWeapon || IsWeaponDrawn;
+
+        return new HudMoveData
+        {
+            DisplayName = displayName,
+            Keybind = keybind,
+            IconLabel = iconLabel,
+            Damage = damage,
+            Cooldown = cooldown,
+            RemainingCooldown = remainingCooldown,
+            RequiresDrawnWeapon = requiresDrawnWeapon,
+            IsUsable = isUsable,
+            AccentColor = accentColor
+        };
+    }
+
+    private float GetTimedCooldownRemaining(float lastUseTime, float cooldown)
+    {
+        return Mathf.Max(0f, cooldown - (Time.time - lastUseTime));
+    }
+
+    private void ExecuteAttack(PlayerAttackType attackType, string attackLabel, float baseDamage)
+    {
+        if (ComboTracker.Instance != null)
+            ComboTracker.Instance.AddAttack(attackType, Time.time);
+
+        string comboSignature = ComboHitSystem.ToActionToken(attackType);
+        float comboMultiplier = 1f;
+        if (ComboHitSystem.Instance != null)
+            comboMultiplier = ComboHitSystem.Instance.RegisterAttack(attackType, Time.time, out comboSignature);
+
+        bool landed = false;
+        float finalDamage = GetScaledDamage(baseDamage, comboMultiplier);
+
+        if (currentBoss != null)
+        {
+            currentBoss.OnPlayerCombatAction(attackType, Time.time);
+            if (IsInRange(currentBoss.transform))
+            {
+                currentBoss.TakeDamage(finalDamage);
+                landed = true;
+            }
+        }
+
+        CombatEventSystem.RaisePlayerAttack(attackLabel, landed, landed ? finalDamage : 0f);
+        ComboHitSystem.Instance?.ResolveCombo(comboSignature, landed);
+    }
+
+    private float GetDisplayedDamage(PlayerAttackType attackType)
+    {
+        return GetScaledDamage(damages[attackType], 1f);
+    }
+
+    private float GetScaledDamage(float baseDamage, float comboMultiplier)
+    {
+        float playerMultiplier = Mathf.Max(0.1f, _currentDifficulty.playerDamageMultiplier);
+        return baseDamage * playerMultiplier * comboMultiplier;
+    }
+
+    private float GetScaledParryDamage(float counterMultiplier)
+    {
+        float safeMultiplier = Mathf.Max(1f, counterMultiplier);
+        return GetScaledDamage(ParryCounterDamage, safeMultiplier);
+    }
+
+    private void HandleDifficultyAdjusted(DifficultySettings settings)
+    {
+        _currentDifficulty = settings;
+    }
+
     bool IsInRange(Transform target) =>
-        Vector3.Distance(transform.position, target.position) <= attackRange;
+        GetHorizontalDistance(target) <= attackRange;
+
+    bool IsBossTargetable(BossAIController boss, out float distance)
+    {
+        distance = float.MaxValue;
+
+        if (boss == null || !boss.gameObject.activeInHierarchy)
+            return false;
+
+        distance = GetHorizontalDistance(boss.transform);
+        return distance <= bossSearchRadius;
+    }
+
+    float GetHorizontalDistance(Transform target)
+    {
+        if (target == null)
+            return float.MaxValue;
+
+        Vector3 from = transform.position;
+        Vector3 to = target.position;
+        from.y = 0f;
+        to.y = 0f;
+        return Vector3.Distance(from, to);
+    }
 
     void OnDrawGizmosSelected()
     {

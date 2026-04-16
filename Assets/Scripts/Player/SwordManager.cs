@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// Press F to show both weapons (drawn) or hide them (sheathed).
@@ -45,7 +46,7 @@ public class SwordManager : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetKeyDown(drawSheathKey))
+        if (Keyboard.current != null && Keyboard.current.fKey.wasPressedThisFrame)
             Toggle();
     }
 
