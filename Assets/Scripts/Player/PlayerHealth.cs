@@ -83,6 +83,7 @@ public class PlayerHealth : MonoBehaviour
 
     private void Die()
     {
+        CombatEventBus.FirePlayerDied();
         Debug.Log("[Player] defeated.");
 
         // Play death animation

@@ -24,6 +24,23 @@ public static class BossCounterLibrary
             { "Attack2 > Attack3 > Attack4 > Ultimate", "FullComboCounter" }
         };
 
+    /// <summary>
+    /// Returns a descriptive counter name for the predicted next player action.
+    /// Used by ComboTracker to label the boss's likely response.
+    /// </summary>
+    public static string GetCounterForPrediction(string predictedAction)
+    {
+        return predictedAction switch
+        {
+            "AutoAttack" => "QuickInterrupt",
+            "Attack2"    => "DodgePunish",
+            "Attack3"    => "GrabCounter",
+            "Attack4"    => "HeavyInterrupt",
+            "Ultimate"   => "UltimateInterrupt",
+            _            => "AdaptiveResponse",
+        };
+    }
+
     public static string GetCounter(List<AttackEvent> comboSlice)
     {
         if (comboSlice == null || comboSlice.Count == 0)
