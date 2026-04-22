@@ -68,6 +68,16 @@ public struct BossAttack
     public bool isUndodgeable;
     public bool guaranteedNoCounter;
     public int comboChainLength;
+    // Fields used by BossAIController (PascalCase for catalogue initializer)
+    public string      Name;
+    public BossAttackId Id;
+    public bool        IsParryable;
+    public float       DamageMultiplier;
+    public float       TelegraphSeconds;
+    public float       HitboxSeconds;
+    public float       RecoverySeconds;
+    public int         MinPhase;
+    public int         AnimatorTriggerHash;
 }
 
 /// <summary>Live adaptive difficulty snapshot consumed by combat systems.</summary>

@@ -221,9 +221,9 @@ public class ChatDialogueUI : MonoBehaviour
 
     private void SetPlayerMovement(bool on)
     {
-        var pm = FindObjectOfType<PlayerMovement>();
+        var pm = FindFirstObjectByType<PlayerMovement>();
         if (pm != null) pm.enabled = on;
-        var pcc = FindObjectOfType<PlayerCombatController>();
+        var pcc = FindFirstObjectByType<PlayerCombatController>();
         if (pcc != null) pcc.enabled = on;
     }
 
@@ -240,7 +240,7 @@ public class ChatDialogueUI : MonoBehaviour
     private void BuildUI()
     {
         // Find or create Canvas
-        Canvas canvas = FindObjectOfType<Canvas>();
+        Canvas canvas = FindFirstObjectByType<Canvas>();
         Transform canvasT;
         if (canvas != null)
         {

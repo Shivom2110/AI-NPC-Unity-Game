@@ -25,7 +25,7 @@ public class GameInitializer : MonoBehaviour
 
     private void EnsureComponent<T>() where T : Component
     {
-        T existing = FindObjectOfType<T>();
+        T existing = FindFirstObjectByType<T>();
         if (existing == null)
         {
             gameObject.AddComponent<T>();

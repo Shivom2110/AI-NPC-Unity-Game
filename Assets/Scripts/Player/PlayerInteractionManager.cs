@@ -28,7 +28,7 @@ public class PlayerInteractionManager : MonoBehaviour
 
     private void FindNearestNpc()
     {
-        NPCController[] all  = FindObjectsOfType<NPCController>();
+        NPCController[] all  = FindObjectsByType<NPCController>(FindObjectsSortMode.None);
         NPCController   best = null;
         float bestDist       = float.MaxValue;
 
