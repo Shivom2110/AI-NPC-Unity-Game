@@ -65,7 +65,9 @@ public class ParryWindow : MonoBehaviour
 
         lastResolvedAttackSerial = currentAttackSerial;
 
-        if (!currentAttack.isParryable || currentAttack.guaranteedNoCounter)
+        // Check both naming conventions — BossAIController uses PascalCase, catalogue uses camelCase.
+        bool parryable = currentAttack.IsParryable || currentAttack.isParryable;
+        if (!parryable || currentAttack.guaranteedNoCounter)
         {
             CombatEventSystem.RaisePlayerParry(false, resolution.timingPrecisionMs);
             return resolution;

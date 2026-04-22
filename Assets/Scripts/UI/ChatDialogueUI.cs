@@ -1,61 +1,107 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 /// <summary>
-/// Self-contained chat UI. Creates all UI at runtime — no prefabs or Inspector wiring needed.
-/// Just add this component to any always-active GameObject (e.g. GameInitializer) and it works.
+/// Polished chat UI with bubble-style messages, quick-reply buttons, and NPC header.
+/// Player messages appear on the right (blue). NPC messages appear on the left (gray).
+/// Self-builds all UI at runtime — no Inspector wiring or prefabs required.
 /// </summary>
 public class ChatDialogueUI : MonoBehaviour
 {
     public static ChatDialogueUI Instance { get; private set; }
 
-    // ── Runtime-created UI references ──────────────────────────────────────────
-    private GameObject  _panel;
-    private Text        _npcNameText;
-    private Text        _relationText;
-    private ScrollRect  _scroll;
-    private RectTransform _content;
-    private InputField  _input;
-    private Button      _sendBtn;
-    private Button      _leaveBtn;
-
     // ── State ──────────────────────────────────────────────────────────────────
     public bool IsOpen { get; private set; }
-
     private NPCController _npc;
-    private readonly List<GameObject> _lines = new List<GameObject>();
+    private readonly List<GameObject> _bubbles = new List<GameObject>();
+    private Text  _chatLog;
+    private string _chatText = "";
 
-    private readonly Color _playerColour = new Color(0.75f, 0.93f, 1.00f);
-    private readonly Color _npcColour    = new Color(1.00f, 0.92f, 0.70f);
+    // ── UI refs ────────────────────────────────────────────────────────────────
+    private GameObject   _panel;
+    private Canvas       _canvas;
+    private Text         _npcNameText;
+    private Text         _relationText;
+    private Text         _iconInitial;
+    private ScrollRect   _scroll;
+    private RectTransform _content;
+    private InputField   _input;
+    private Button       _sendBtn;
+    private Button       _leaveBtn;
+
+    // ── Palette ────────────────────────────────────────────────────────────────
+    private static readonly Color C_PanelBg    = new Color(0.09f, 0.10f, 0.15f, 0.97f);
+    private static readonly Color C_HeaderBg   = new Color(0.12f, 0.15f, 0.25f, 1.00f);
+    private static readonly Color C_HeaderLine = new Color(0.30f, 0.45f, 0.75f, 0.90f);
+    private static readonly Color C_ScrollBg   = new Color(0.07f, 0.08f, 0.12f, 1.00f);
+    private static readonly Color C_QRBarBg    = new Color(0.10f, 0.12f, 0.20f, 1.00f);
+    private static readonly Color C_QRBtn      = new Color(0.16f, 0.22f, 0.40f, 1.00f);
+    private static readonly Color C_QRHover    = new Color(0.24f, 0.34f, 0.58f, 1.00f);
+    private static readonly Color C_InputBg    = new Color(0.13f, 0.16f, 0.24f, 1.00f);
+    private static readonly Color C_InputRowBg = new Color(0.10f, 0.12f, 0.20f, 1.00f);
+    private static readonly Color C_SendBtn    = new Color(0.16f, 0.48f, 0.88f, 1.00f);
+    private static readonly Color C_LeaveBtn   = new Color(0.55f, 0.18f, 0.18f, 1.00f);
+    private static readonly Color C_PlayerBub  = new Color(0.18f, 0.42f, 0.80f, 1.00f);
+    private static readonly Color C_NPCBub     = new Color(0.22f, 0.28f, 0.42f, 1.00f);
+    private static readonly Color C_Border     = new Color(0.25f, 0.38f, 0.65f, 0.60f);
+    private static readonly Color C_Gold       = new Color(0.98f, 0.82f, 0.22f, 1.00f);
+    private static readonly Color C_TextLight  = new Color(0.93f, 0.93f, 0.95f, 1.00f);
+    private static readonly Color C_TextDim    = new Color(0.50f, 0.52f, 0.58f, 1.00f);
+    private static readonly Color C_IconBg     = new Color(0.22f, 0.40f, 0.76f, 1.00f);
+
+    private Font _font;
+
+    // ── Bootstrap ──────────────────────────────────────────────────────────────
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void Bootstrap()
+    {
+        if (FindFirstObjectByType<ChatDialogueUI>() != null) return;
+        new GameObject("ChatDialogueUI").AddComponent<ChatDialogueUI>();
+    }
+
+    // ── Quick reply topics ─────────────────────────────────────────────────────
+    private static readonly string[] QuickReplies = {
+        "Controls?",
+        "How to fight?",
+        "How to parry?",
+        "How to dodge?",
+        "Special moves?",
+        "About the boss?",
+        "Any tips?",
+    };
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(this); return; }
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        Debug.Log("[ChatDialogueUI] Awake — building UI");
+        DontDestroyOnLoad(gameObject);
+        _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildUI();
-        _panel.SetActive(false);
+        if (_panel != null)
+            _panel.SetActive(false);
     }
 
     private void Start()
     {
-        _sendBtn.onClick.AddListener(OnSendClicked);
-        _leaveBtn.onClick.AddListener(OnLeaveClicked);
+        _sendBtn.onClick.AddListener(OnSend);
+        _leaveBtn.onClick.AddListener(OnLeave);
         _input.onEndEdit.AddListener(s =>
         {
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
-                OnSendClicked();
+                OnSend();
         });
     }
 
     private void Update()
     {
-        if (IsOpen && Input.GetKeyDown(KeyCode.Escape))
-            CloseChat();
+        if (IsOpen && Input.GetKeyDown(KeyCode.Escape)) CloseChat();
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -63,16 +109,28 @@ public class ChatDialogueUI : MonoBehaviour
     public void OpenChat(NPCController npc)
     {
         if (npc == null) return;
+        if (_panel == null || _input == null || _chatLog == null)
+        {
+            Debug.LogWarning("[ChatDialogueUI] UI was not fully initialized. Rebuilding now.");
+            BuildUI();
+        }
+
+        if (_panel == null || _input == null || _chatLog == null)
+        {
+            Debug.LogError("[ChatDialogueUI] Chat UI failed to initialize.");
+            return;
+        }
+
         _npc   = npc;
         IsOpen = true;
 
-        ClearHistory();
+        ClearBubbles();
         _panel.SetActive(true);
         RefreshHeader();
 
-        string greeting = _npc.InteractWithPlayer("greet") ?? "Hello.";
-        AppendMessage(_npc.GetNPCId(), greeting, _npcColour);
-        RefreshHeader();
+        string greeting = _npc.GetResponse("hello");
+        AddBubble(greeting, isPlayer: false);
+        Debug.Log($"[ChatDialogueUI] Opened chat with {_npc.GetNPCId()}. Greeting length={greeting.Length}");
 
         FocusInput();
         SetPlayerMovement(false);
@@ -93,125 +151,146 @@ public class ChatDialogueUI : MonoBehaviour
 
     // ── Input ──────────────────────────────────────────────────────────────────
 
-    private void OnSendClicked()
+    private void OnSend()
     {
         string text = _input.text.Trim();
         if (string.IsNullOrEmpty(text)) return;
         _input.text = string.Empty;
-        ProcessText(text);
+        Dispatch(text);
         FocusInput();
     }
 
-    private void OnLeaveClicked()
+    private void OnLeave()
     {
-        AppendMessage("You", "Farewell.", _playerColour);
-        string r = _npc?.InteractWithPlayer("bye") ?? "Goodbye.";
-        AppendMessage(_npc?.GetNPCId() ?? "NPC", r, _npcColour);
-        StartCoroutine(DelayClose(1.0f));
+        Dispatch("Goodbye.");
+        StartCoroutine(DelayClose(1.3f));
     }
 
-    private void ProcessText(string raw)
+    /// <summary>Send a quick-reply message (called by quick-reply buttons).</summary>
+    public void SendQuickReply(string text)
+    {
+        _input.text = string.Empty;
+        Dispatch(text);
+        FocusInput();
+    }
+
+    private void Dispatch(string text)
     {
         if (_npc == null) return;
-        string lo = raw.ToLowerInvariant();
+        AddBubble(text, isPlayer: true);
 
-        string action;
-        if      (Has(lo, "hello","hi","hey","greet","howdy","morning","evening")) action = "greet";
-        else if (Has(lo, "buy","sell","trade","shop","deal","goods","item","price","wares")) action = "trade";
-        else if (Has(lo, "help","assist","quest","task","need","favour","favor","job")) action = "help";
-        else if (Has(lo, "threat","kill","die","attack","hurt","warn","fight")) action = "threaten";
-        else if (Has(lo, "bye","goodbye","farewell","later","leave","done","nothing")) action = "bye";
-        else    action = "greet";
+        // Use Groq AI when an API key is configured; keyword matching otherwise.
+        if (GroqNPCResponder.Instance != null && GroqNPCResponder.Instance.IsAvailable)
+        {
+            GroqNPCResponder.Instance.Ask(
+                _npc.GetNPCId(),
+                text,
+                onReply:    reply => { AddBubble(reply, isPlayer: false); RefreshHeader(); },
+                onFallback: ()    => FallbackReply(text));
+        }
+        else
+        {
+            FallbackReply(text);
+        }
+    }
 
-        AppendMessage("You", raw, _playerColour);
-        string response = _npc.InteractWithPlayer(action) ?? "...";
-        AppendMessage(_npc.GetNPCId(), response, _npcColour);
+    private void FallbackReply(string text)
+    {
+        string reply = _npc != null ? _npc.GetResponse(text) : "...";
+        StartCoroutine(NPCReplyAfterDelay(reply, 0.25f));
+    }
+
+    private IEnumerator NPCReplyAfterDelay(string text, float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        AddBubble(text, isPlayer: false);
         RefreshHeader();
-
-        if (action == "bye") StartCoroutine(DelayClose(1.0f));
     }
 
-    // ── Chat history ───────────────────────────────────────────────────────────
+    // ── Bubbles ────────────────────────────────────────────────────────────────
 
-    private void AppendMessage(string speaker, string message, Color col)
+    private void AddBubble(string text, bool isPlayer)
     {
-        // Row
-        var row   = new GameObject("Row");
-        row.transform.SetParent(_content, false);
-        var rowRT = row.AddComponent<RectTransform>();
-        rowRT.anchorMin = new Vector2(0,1); rowRT.anchorMax = new Vector2(1,1);
-        rowRT.pivot     = new Vector2(0.5f,1f);
-        var rowCSF = row.AddComponent<ContentSizeFitter>();
-        rowCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        var rowVLG = row.AddComponent<VerticalLayoutGroup>();
-        rowVLG.childControlWidth = true; rowVLG.childForceExpandWidth = true;
-        rowVLG.childControlHeight = true; rowVLG.childForceExpandHeight = false;
-        rowVLG.spacing = 2;
+        // Append to the single text log — no complex RectTransform layout needed.
+        string label = isPlayer
+            ? "<color=#6ab0f5><b>You</b></color>"
+            : $"<color=#ffd966><b>{GetNpcDisplayName()}</b></color>";
+        string line = $"{label}:  {text}";
+        _chatText = string.IsNullOrEmpty(_chatText) ? line : _chatText + "\n\n" + line;
 
-        // Speaker label
-        AddText(row.transform, speaker, 12, FontStyle.Bold, col, 20);
+        if (_chatLog != null)
+        {
+            _chatLog.text = _chatText;
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_chatLog.rectTransform);
 
-        // Message
-        AddText(row.transform, message, 15, FontStyle.Normal, Color.white, 0);
+            RectTransform logRect = _chatLog.GetComponent<RectTransform>();
+            logRect.offsetMin = new Vector2(12f, -12f);
+            logRect.offsetMax = new Vector2(-12f, 0f);
+            logRect.sizeDelta = new Vector2(0f, Mathf.Max(_chatLog.preferredHeight, 24f));
 
-        _lines.Add(row);
-        StartCoroutine(ScrollBottom());
+            float h = _chatLog.preferredHeight + 36f;
+            if (_content != null)
+                _content.sizeDelta = new Vector2(0f, Mathf.Max(h, 40f));
+        }
+
+        Debug.Log($"[ChatDialogueUI] Added {(isPlayer ? "player" : "npc")} line. Total chars={_chatText.Length}, preferredHeight={_chatLog.preferredHeight}");
+
+        StartCoroutine(ScrollToBottom());
     }
 
-    private void AddText(Transform parent, string body, int size, FontStyle style,
-                         Color colour, int minHeight)
+    private static void AddSpacer(Transform parent)
     {
-        var go = new GameObject("T");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        var t = go.AddComponent<Text>();
-        t.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        t.text      = body;
-        t.fontSize  = size;
-        t.fontStyle = style;
-        t.color     = colour;
-        t.alignment = TextAnchor.UpperLeft;
-        t.horizontalOverflow = HorizontalWrapMode.Wrap;
-        t.verticalOverflow   = VerticalWrapMode.Overflow;
-        var csf = go.AddComponent<ContentSizeFitter>();
-        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        var le = go.AddComponent<LayoutElement>();
+        var s  = MakeRect(parent, "Spc");
+        var le = s.AddComponent<LayoutElement>();
         le.flexibleWidth = 1;
-        if (minHeight > 0) le.minHeight = minHeight;
     }
 
-    private void ClearHistory()
+    private void ClearBubbles()
     {
-        foreach (var l in _lines) if (l != null) Destroy(l);
-        _lines.Clear();
+        foreach (var b in _bubbles) if (b) Destroy(b);
+        _bubbles.Clear();
+        _chatText  = "";
+        if (_chatLog  != null) _chatLog.text = "";
+        if (_content  != null) _content.sizeDelta = new Vector2(0f, 40f);
     }
 
-    private IEnumerator ScrollBottom()
+    private IEnumerator ScrollToBottom()
     {
         yield return new WaitForEndOfFrame();
-        if (_scroll != null) _scroll.verticalNormalizedPosition = 0f;
+        if (_scroll == null || _content == null) yield break;
+        // Only scroll when content is taller than the viewport; otherwise leave at top.
+        float viewH = _scroll.viewport != null ? _scroll.viewport.rect.height : 0f;
+        if (_content.sizeDelta.y > viewH && viewH > 0f)
+            _scroll.verticalNormalizedPosition = 0f;
     }
 
     private IEnumerator DelayClose(float t)
     {
-        yield return new WaitForSeconds(t);
+        yield return new WaitForSecondsRealtime(t);
         CloseChat();
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // ── Header ─────────────────────────────────────────────────────────────────
 
     private void RefreshHeader()
     {
         if (_npc == null) return;
-        _npcNameText.text = _npc.GetNPCId();
+        string id = _npc.GetNPCId();
+        _npcNameText.text = id;
+        if (_iconInitial != null)
+            _iconInitial.text = id.Length > 0 ? id[0].ToString().ToUpper() : "?";
+
         if (NPCMemoryManager.Instance != null)
         {
             NPCMemory mem = _npc.GetMemory();
             _relationText.text = mem != null
-                ? NPCMemoryManager.Instance.GetRelationshipLevel(mem.relationshipScore)
-                : "Unknown";
+                ? NPCMemoryManager.GetRelationshipLevel(mem.relationshipScore)
+                : "Stranger";
         }
     }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     private void FocusInput()
     {
@@ -219,195 +298,289 @@ public class ChatDialogueUI : MonoBehaviour
         _input.Select();
     }
 
+    private string GetNpcDisplayName()
+    {
+        return _npc != null ? _npc.GetNPCId() : "NPC";
+    }
+
     private void SetPlayerMovement(bool on)
     {
-        var pm = FindFirstObjectByType<PlayerMovement>();
-        if (pm != null) pm.enabled = on;
+        var pm  = FindFirstObjectByType<PlayerMovement>();
+        if (pm  != null) pm.enabled  = on;
         var pcc = FindFirstObjectByType<PlayerCombatController>();
         if (pcc != null) pcc.enabled = on;
     }
 
-    private static bool Has(string src, params string[] kw)
-    {
-        foreach (var k in kw) if (src.Contains(k)) return true;
-        return false;
-    }
-
     // ══════════════════════════════════════════════════════════════════════════
-    // UI CONSTRUCTION — called once in Awake
+    // UI CONSTRUCTION
     // ══════════════════════════════════════════════════════════════════════════
 
     private void BuildUI()
     {
-        // Find or create Canvas
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-        Transform canvasT;
-        if (canvas != null)
-        {
-            canvasT = canvas.transform;
-        }
-        else
-        {
-            var cgo = new GameObject("Canvas");
-            var c   = cgo.AddComponent<Canvas>();
-            c.renderMode = RenderMode.ScreenSpaceOverlay;
-            cgo.AddComponent<CanvasScaler>();
-            cgo.AddComponent<GraphicRaycaster>();
-            canvasT = cgo.transform;
-        }
+        EnsureEventSystem();
 
-        // ── Root panel ────────────────────────────────────────────────────
-        _panel = MakeImage(canvasT, "ChatPanel", new Color(0.08f, 0.09f, 0.12f, 0.97f));
-        Anchors(_panel, 0.20f, 0.15f, 0.80f, 0.85f);
+        Transform existingCanvas = transform.Find("ChatCanvas");
+        if (existingCanvas != null)
+            Destroy(existingCanvas.gameObject);
 
-        // ── Header ────────────────────────────────────────────────────────
-        var header = MakeImage(_panel.transform, "Header", new Color(0.13f, 0.15f, 0.23f, 1f));
-        Anchors(header, 0f, 0.88f, 1f, 1f);
+        // Dedicated canvas
+        var cvGO = new GameObject("ChatCanvas");
+        cvGO.transform.SetParent(transform);
+        _canvas = cvGO.AddComponent<Canvas>();
+        _canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 40;
+        var scaler = cvGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        cvGO.AddComponent<GraphicRaycaster>();
+        var ct = cvGO.transform;
 
-        _npcNameText = MakeLabel(header.transform, "NPCName", "NPC", 18, FontStyle.Bold,
+        // ── Root panel — right side of screen, compact ───────────────────────
+        // Occupies the right ~38% of the screen so the game world stays visible.
+        _panel = MakeRect(ct, "ChatPanel");
+        SetImg(_panel, C_PanelBg);
+        SetAnchors(_panel, 0.62f, 0.14f, 0.99f, 0.92f);
+
+        // Thin border
+        var border = MakeRect(_panel.transform, "Border");
+        SetImg(border, C_Border);
+        var bRT = border.GetComponent<RectTransform>();
+        bRT.anchorMin = Vector2.zero; bRT.anchorMax = Vector2.one;
+        bRT.offsetMin = new Vector2(-1, -1); bRT.offsetMax = new Vector2(1, 1);
+        border.transform.SetAsFirstSibling();
+
+        // ── Header (top 11%) ─────────────────────────────────────────────────
+        var header = MakeRect(_panel.transform, "Header");
+        SetImg(header, C_HeaderBg);
+        SetAnchors(header, 0f, 0.89f, 1f, 1f);
+
+        // Icon circle — left
+        var iconGO = MakeRect(header.transform, "Icon");
+        SetImg(iconGO, C_IconBg);
+        var iconRT = iconGO.GetComponent<RectTransform>();
+        iconRT.anchorMin = new Vector2(0f, 0.5f); iconRT.anchorMax = new Vector2(0f, 0.5f);
+        iconRT.pivot     = new Vector2(0f, 0.5f);
+        iconRT.sizeDelta = new Vector2(32f, 32f);
+        iconRT.anchoredPosition = new Vector2(10f, 0f);
+        _iconInitial = MakeText(iconGO.transform, "?", 16, FontStyle.Bold,
+            TextAnchor.MiddleCenter, Color.white);
+        SetAnchors(_iconInitial.gameObject, 0f, 0f, 1f, 1f);
+
+        // NPC name
+        _npcNameText = MakeText(header.transform, "NPC", 14, FontStyle.Bold,
             TextAnchor.MiddleLeft, Color.white);
-        Anchors(_npcNameText.gameObject, 0f, 0f, 0.65f, 1f);
-        _npcNameText.GetComponent<RectTransform>().offsetMin = new Vector2(12, 0);
+        var nameRT = _npcNameText.GetComponent<RectTransform>();
+        nameRT.anchorMin = new Vector2(0f, 0f); nameRT.anchorMax = new Vector2(0.6f, 1f);
+        nameRT.offsetMin = new Vector2(50f, 0f); nameRT.offsetMax = Vector2.zero;
 
-        _relationText = MakeLabel(header.transform, "Relation", "Neutral", 13, FontStyle.Normal,
-            TextAnchor.MiddleRight, new Color(1f, 0.82f, 0.25f));
-        Anchors(_relationText.gameObject, 0.55f, 0f, 1f, 1f);
-        _relationText.GetComponent<RectTransform>().offsetMax = new Vector2(-10, 0);
+        // Relationship pill — right
+        var pillGO = MakeRect(header.transform, "Pill");
+        SetImg(pillGO, new Color(0.16f, 0.22f, 0.38f, 1f));
+        var pillRT = pillGO.GetComponent<RectTransform>();
+        pillRT.anchorMin = new Vector2(1f, 0.5f); pillRT.anchorMax = new Vector2(1f, 0.5f);
+        pillRT.pivot     = new Vector2(1f, 0.5f);
+        pillRT.sizeDelta = new Vector2(90f, 20f);
+        pillRT.anchoredPosition = new Vector2(-8f, 0f);
+        _relationText = MakeText(pillGO.transform, "Stranger", 10, FontStyle.Normal,
+            TextAnchor.MiddleCenter, C_Gold);
+        SetAnchors(_relationText.gameObject, 0f, 0f, 1f, 1f);
 
-        // ── Input row ─────────────────────────────────────────────────────
-        var inputRow = MakeImage(_panel.transform, "InputRow", new Color(0.10f, 0.11f, 0.16f, 1f));
-        Anchors(inputRow, 0f, 0f, 1f, 0.13f);
+        // Divider under header
+        var div = MakeRect(_panel.transform, "Div");
+        SetImg(div, C_HeaderLine);
+        SetAnchors(div, 0f, 0.887f, 1f, 0.890f);
 
-        var hlg = inputRow.AddComponent<HorizontalLayoutGroup>();
-        hlg.childControlWidth      = true;  hlg.childForceExpandWidth  = false;
-        hlg.childControlHeight     = true;  hlg.childForceExpandHeight = true;
-        hlg.spacing = 6; hlg.padding = new RectOffset(8, 8, 6, 6);
+        // ── Quick-reply bar (above input, ~7% height) ────────────────────────
+        var qrBar = MakeRect(_panel.transform, "QRBar");
+        SetImg(qrBar, C_QRBarBg);
+        SetAnchors(qrBar, 0f, 0.115f, 1f, 0.175f);
 
-        _input    = MakeInputField(inputRow.transform);
-        _input.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+        var qrDiv = MakeRect(_panel.transform, "QRDiv");
+        SetImg(qrDiv, C_HeaderLine);
+        SetAnchors(qrDiv, 0f, 0.172f, 1f, 0.175f);
 
-        _sendBtn  = MakeBtn(inputRow.transform, "Send",  new Color(0.15f, 0.48f, 0.85f), 70);
-        _leaveBtn = MakeBtn(inputRow.transform, "Leave", new Color(0.42f, 0.16f, 0.16f), 62);
+        var qrHLG = qrBar.AddComponent<HorizontalLayoutGroup>();
+        qrHLG.childControlHeight    = true;
+        qrHLG.childForceExpandHeight = true;
+        qrHLG.childControlWidth     = false;
+        qrHLG.childForceExpandWidth = false;
+        qrHLG.spacing = 5;
+        qrHLG.padding = new RectOffset(8, 8, 5, 5);
 
-        // ── Scroll area ───────────────────────────────────────────────────
-        var scrollGO = MakeImage(_panel.transform, "Scroll", new Color(0.05f, 0.06f, 0.09f, 1f));
-        Anchors(scrollGO, 0f, 0.13f, 1f, 0.88f);
+        foreach (var qr in QuickReplies)
+        {
+            var btnGO = MakeRect(qrBar.transform, "QR");
+            SetImg(btnGO, C_QRBtn);
+            var btnRT = btnGO.GetComponent<RectTransform>();
+            btnRT.sizeDelta = new Vector2(95f, 24f);
+            var btn  = btnGO.AddComponent<Button>();
+            var cols = btn.colors;
+            cols.normalColor      = C_QRBtn;
+            cols.highlightedColor = C_QRHover;
+            cols.pressedColor     = new Color(0.09f, 0.13f, 0.24f, 1f);
+            btn.colors = cols;
+            var lbl = MakeText(btnGO.transform, qr, 10, FontStyle.Normal,
+                TextAnchor.MiddleCenter, C_TextLight);
+            SetAnchors(lbl.gameObject, 0f, 0f, 1f, 1f);
+            string cap = qr;
+            btn.onClick.AddListener(() => SendQuickReply(cap));
+        }
+
+        // ── Scroll area (header bottom → qr bar top) ────────────────────────
+        var scrollGO = MakeRect(_panel.transform, "Scroll");
+        SetImg(scrollGO, C_ScrollBg);
+        SetAnchors(scrollGO, 0f, 0.175f, 1f, 0.887f);
         _scroll = scrollGO.AddComponent<ScrollRect>();
 
-        var vp = MakeImage(scrollGO.transform, "Viewport", new Color(0,0,0,0));
-        Anchors(vp, 0f, 0f, 1f, 1f);
-        vp.AddComponent<Mask>().showMaskGraphic = false;
+        var vpGO = MakeRect(scrollGO.transform, "VP");
+        SetImg(vpGO, Color.clear);
+        SetAnchors(vpGO, 0f, 0f, 1f, 1f);
+        vpGO.AddComponent<RectMask2D>();
 
         var contentGO = new GameObject("Content");
-        contentGO.transform.SetParent(vp.transform, false);
-        _content            = contentGO.AddComponent<RectTransform>();
-        _content.anchorMin  = new Vector2(0f, 1f);
-        _content.anchorMax  = new Vector2(1f, 1f);
-        _content.pivot      = new Vector2(0.5f, 1f);
-        _content.sizeDelta  = Vector2.zero;
+        contentGO.transform.SetParent(vpGO.transform, false);
+        _content           = contentGO.AddComponent<RectTransform>();
+        _content.anchorMin        = new Vector2(0f, 1f);
+        _content.anchorMax        = new Vector2(1f, 1f);
+        _content.pivot            = new Vector2(0.5f, 1f);
+        _content.sizeDelta        = new Vector2(0f, 40f);
+        _content.anchoredPosition = Vector2.zero;
 
-        var vlg = contentGO.AddComponent<VerticalLayoutGroup>();
-        vlg.childControlWidth = true; vlg.childForceExpandWidth  = true;
-        vlg.childControlHeight = true; vlg.childForceExpandHeight = false;
-        vlg.spacing = 8; vlg.padding = new RectOffset(10,10,8,8);
-        contentGO.AddComponent<ContentSizeFitter>().verticalFit =
-            ContentSizeFitter.FitMode.PreferredSize;
+        // Single text component — all messages appended here, no layout complexity.
+        var logGO = new GameObject("Log", typeof(RectTransform), typeof(Text));
+        logGO.transform.SetParent(_content, false);
+        var logRT = logGO.GetComponent<RectTransform>();
+        logRT.anchorMin        = new Vector2(0f, 1f);
+        logRT.anchorMax        = new Vector2(1f, 1f);
+        logRT.pivot            = new Vector2(0.5f, 1f);
+        logRT.anchoredPosition = new Vector2(12f, -12f);
+        logRT.offsetMin        = new Vector2(12f, -12f);
+        logRT.offsetMax        = new Vector2(-12f, 0f);
+        logRT.sizeDelta        = new Vector2(0f, 24f);
+        _chatLog = logGO.GetComponent<Text>();
+        _chatLog.font               = _font;
+        _chatLog.fontSize           = 18;
+        _chatLog.color              = C_TextLight;
+        _chatLog.alignment          = TextAnchor.UpperLeft;
+        _chatLog.horizontalOverflow = HorizontalWrapMode.Wrap;
+        _chatLog.verticalOverflow   = VerticalWrapMode.Overflow;
+        _chatLog.supportRichText    = true;
+        _chatLog.raycastTarget      = false;
 
         _scroll.content          = _content;
-        _scroll.viewport         = vp.GetComponent<RectTransform>();
+        _scroll.viewport         = vpGO.GetComponent<RectTransform>();
         _scroll.horizontal       = false;
         _scroll.vertical         = true;
-        _scroll.scrollSensitivity = 20f;
+        _scroll.scrollSensitivity = 25f;
         _scroll.movementType     = ScrollRect.MovementType.Clamped;
+
+        // ── Input row (bottom 11.5%) ─────────────────────────────────────────
+        var inputRow = MakeRect(_panel.transform, "InputRow");
+        SetImg(inputRow, C_InputRowBg);
+        SetAnchors(inputRow, 0f, 0f, 1f, 0.115f);
+        var iHLG = inputRow.AddComponent<HorizontalLayoutGroup>();
+        iHLG.childControlWidth    = true;
+        iHLG.childForceExpandWidth = false;
+        iHLG.childControlHeight   = true;
+        iHLG.childForceExpandHeight = true;
+        iHLG.spacing = 6;
+        iHLG.padding = new RectOffset(10, 10, 8, 8);
+
+        _input  = BuildInputField(inputRow.transform);
+        _input.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1;
+        _sendBtn  = BuildButton(inputRow.transform, "Send",  C_SendBtn,  68f);
+        _leaveBtn = BuildButton(inputRow.transform, "Leave", C_LeaveBtn, 62f);
     }
 
-    // ── UI factory methods ────────────────────────────────────────────────────
+    // ── UI factory helpers ─────────────────────────────────────────────────────
 
-    static GameObject MakeImage(Transform parent, string name, Color col)
+    private static GameObject MakeRect(Transform parent, string name)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         go.AddComponent<RectTransform>();
-        go.AddComponent<Image>().color = col;
         return go;
     }
 
-    static Text MakeLabel(Transform parent, string name, string body, int size,
-        FontStyle style, TextAnchor align, Color col)
+    private static Image SetImg(GameObject go, Color col)
     {
-        var go = new GameObject(name);
+        var img = go.GetComponent<Image>() ?? go.AddComponent<Image>();
+        img.color = col;
+        return img;
+    }
+
+    private Text MakeText(Transform parent, string body, int size, FontStyle style,
+        TextAnchor align, Color col)
+    {
+        var go = new GameObject("T");
         go.transform.SetParent(parent, false);
         go.AddComponent<RectTransform>();
-        var t       = go.AddComponent<Text>();
-        t.font      = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        t.text      = body; t.fontSize = size; t.fontStyle = style;
-        t.alignment = align; t.color = col;
+        var t = go.AddComponent<Text>();
+        t.font = _font; t.text = body; t.fontSize = size;
+        t.fontStyle = style; t.alignment = align; t.color = col;
         return t;
     }
 
-    static void Anchors(GameObject go, float ax, float ay, float bx, float by)
+    private static void SetAnchors(GameObject go, float x0, float y0, float x1, float y1)
     {
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin = new Vector2(ax, ay); rt.anchorMax = new Vector2(bx, by);
+        rt.anchorMin = new Vector2(x0, y0); rt.anchorMax = new Vector2(x1, y1);
         rt.sizeDelta = Vector2.zero; rt.anchoredPosition = Vector2.zero;
     }
 
-    static Button MakeBtn(Transform parent, string label, Color bg, float minW)
+    private Button BuildButton(Transform parent, string label, Color bg, float minW)
     {
-        var go = new GameObject(label + "Btn");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        go.AddComponent<Image>().color = bg;
+        var go = MakeRect(parent, label + "Btn");
+        SetImg(go, bg);
+        go.AddComponent<LayoutElement>().minWidth = minW;
         var btn  = go.AddComponent<Button>();
         var cols = btn.colors;
-        cols.highlightedColor = bg * 1.3f; cols.pressedColor = bg * 0.7f;
+        cols.normalColor      = bg;
+        cols.highlightedColor = bg * 1.25f;
+        cols.pressedColor     = bg * 0.70f;
         btn.colors = cols;
-        go.AddComponent<LayoutElement>().minWidth = minW;
-
-        var lbl = new GameObject("T");
-        lbl.transform.SetParent(go.transform, false);
-        var rt       = lbl.AddComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.sizeDelta = Vector2.zero;
-        var t        = lbl.AddComponent<Text>();
-        t.font       = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        t.text       = label; t.fontSize = 13; t.fontStyle = FontStyle.Bold;
-        t.alignment  = TextAnchor.MiddleCenter; t.color = Color.white;
+        var lbl = MakeText(go.transform, label, 13, FontStyle.Bold,
+            TextAnchor.MiddleCenter, Color.white);
+        SetAnchors(lbl.gameObject, 0f, 0f, 1f, 1f);
         return btn;
     }
 
-    InputField MakeInputField(Transform parent)
+    private InputField BuildInputField(Transform parent)
     {
-        var go = new GameObject("Input");
-        go.transform.SetParent(parent, false);
-        go.AddComponent<RectTransform>();
-        go.AddComponent<Image>().color = new Color(0.16f, 0.17f, 0.22f, 1f);
+        var go = MakeRect(parent, "Input");
+        SetImg(go, C_InputBg);
         var field = go.AddComponent<InputField>();
 
-        var ph = new GameObject("PH");
-        ph.transform.SetParent(go.transform, false);
-        var phRT = ph.AddComponent<RectTransform>();
+        var ph   = MakeRect(go.transform, "PH");
+        var phRT = ph.GetComponent<RectTransform>();
         phRT.anchorMin = Vector2.zero; phRT.anchorMax = Vector2.one;
-        phRT.offsetMin = new Vector2(8,2); phRT.offsetMax = new Vector2(-4,-2);
+        phRT.offsetMin = new Vector2(10, 4); phRT.offsetMax = new Vector2(-6, -4);
         var phT = ph.AddComponent<Text>();
-        phT.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        phT.text = "Type a message..."; phT.fontSize = 13;
-        phT.fontStyle = FontStyle.Italic;
-        phT.color = new Color(0.55f,0.55f,0.60f);
-        phT.alignment = TextAnchor.MiddleLeft;
+        phT.font = _font; phT.text = "Say something, or use a quick reply above…";
+        phT.fontSize = 13; phT.fontStyle = FontStyle.Italic;
+        phT.color = C_TextDim; phT.alignment = TextAnchor.MiddleLeft;
 
-        var tx = new GameObject("TX");
-        tx.transform.SetParent(go.transform, false);
-        var txRT = tx.AddComponent<RectTransform>();
+        var tx   = MakeRect(go.transform, "TX");
+        var txRT = tx.GetComponent<RectTransform>();
         txRT.anchorMin = Vector2.zero; txRT.anchorMax = Vector2.one;
-        txRT.offsetMin = new Vector2(8,2); txRT.offsetMax = new Vector2(-4,-2);
+        txRT.offsetMin = new Vector2(10, 4); txRT.offsetMax = new Vector2(-6, -4);
         var txT = tx.AddComponent<Text>();
-        txT.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        txT.fontSize = 13; txT.color = Color.white;
-        txT.alignment = TextAnchor.MiddleLeft;
+        txT.font = _font; txT.fontSize = 13;
+        txT.color = Color.white; txT.alignment = TextAnchor.MiddleLeft;
         txT.supportRichText = false;
 
         field.placeholder   = phT;
         field.textComponent = txT;
         return field;
+    }
+
+    private static void EnsureEventSystem()
+    {
+        if (FindFirstObjectByType<EventSystem>() != null) return;
+
+        var go = new GameObject("EventSystem");
+        go.AddComponent<EventSystem>();
+        go.AddComponent<InputSystemUIInputModule>();
+        DontDestroyOnLoad(go);
     }
 }

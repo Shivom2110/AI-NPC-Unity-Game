@@ -17,8 +17,8 @@ public class GameInitializer : MonoBehaviour
 
         EnsureComponent<NPCMemoryManager>();
         EnsureComponent<ComboTracker>();
-        EnsureComponent<DifficultyEngine>();
-        EnsureComponent<FightProgressionManager>();
+        EnsureComponent<FightProgressionManager>();  // DifficultyEngine is static, no component needed
+        EnsureComponent<AudioManager>();
 
         Debug.Log("[GameInitializer] Systems ready.");
     }

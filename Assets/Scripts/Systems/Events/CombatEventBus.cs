@@ -72,6 +72,13 @@ public static class CombatEventBus
     /// <summary>Fired when boss HP reaches zero.</summary>
     public static event Action OnBossDied;
 
+    /// <summary>
+    /// Fired when the boss attack hitbox phase closes (window expired, attack landed, or
+    /// attack was interrupted by a heavy player hit during telegraph).
+    /// UI uses this to hide the parry/dodge window indicator.
+    /// </summary>
+    public static event Action OnBossAttackEnded;
+
     // ── Skill & Difficulty ────────────────────────────────────────────────────
 
     /// <summary>
@@ -140,6 +147,9 @@ public static class CombatEventBus
     public static void FireBossDied()
         => OnBossDied?.Invoke();
 
+    public static void FireBossAttackEnded()
+        => OnBossAttackEnded?.Invoke();
+
     public static void FireSkillScoreChanged(float oldScore, float newScore)
         => OnSkillScoreChanged?.Invoke(oldScore, newScore);
 
@@ -173,6 +183,7 @@ public static class CombatEventBus
         OnBossAttackLanded    = null;
         OnBossPhaseChanged    = null;
         OnBossDied            = null;
+        OnBossAttackEnded     = null;
         OnSkillScoreChanged   = null;
         OnDifficultyAdjusted  = null;
         OnHeatModeChanged     = null;

@@ -10,7 +10,7 @@ public class CombatSystemBootstrap : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureBootstrap()
     {
-        CombatSystemBootstrap existing = Object.FindObjectOfType<CombatSystemBootstrap>();
+        CombatSystemBootstrap existing = Object.FindFirstObjectByType<CombatSystemBootstrap>();
         if (existing != null)
             return;
 

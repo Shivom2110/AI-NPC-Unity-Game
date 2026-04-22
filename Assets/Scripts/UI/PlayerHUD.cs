@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 
 public class PlayerHUD : MonoBehaviour
 {
@@ -10,11 +11,39 @@ public class PlayerHUD : MonoBehaviour
         public Image Background;
         public Image Accent;
         public Image IconPlate;
+        public Image IconSprite;
         public Image CooldownOverlay;
         public Text IconText;
         public Text KeyText;
         public Text NameText;
         public Text CooldownText;
+    }
+
+    private readonly Dictionary<string, Sprite> _abilitySprites = new Dictionary<string, Sprite>();
+
+    private void PreloadAbilitySprites()
+    {
+        // Load every Sprite in the folder
+        Sprite[] sprites = Resources.LoadAll<Sprite>("AbilityIcons");
+        foreach (Sprite s in sprites)
+            _abilitySprites[s.name.ToLowerInvariant()] = s;
+
+        // Fallback: load as Texture2D for any not found as Sprite
+        Texture2D[] textures = Resources.LoadAll<Texture2D>("AbilityIcons");
+        foreach (Texture2D tex in textures)
+        {
+            string key = tex.name.ToLowerInvariant();
+            if (!_abilitySprites.ContainsKey(key))
+                _abilitySprites[key] = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+        }
+
+        Debug.Log($"[PlayerHUD] Loaded {_abilitySprites.Count} ability sprites: {string.Join(", ", _abilitySprites.Keys)}");
+    }
+
+    private Sprite GetAbilitySprite(string displayName)
+    {
+        _abilitySprites.TryGetValue(displayName.ToLowerInvariant(), out Sprite s);
+        return s;
     }
 
     private static PlayerHUD _instance;
@@ -29,22 +58,29 @@ public class PlayerHUD : MonoBehaviour
     private RectTransform _playerHealthFill;
     private Image _playerHealthFillImage;
     private Text _playerHealthText;
+    private RectTransform _staminaFill;
+    private Text _staminaText;
     private GameObject _bossRoot;
     private RectTransform _bossHealthFill;
     private Text _bossNameText;
     private Text _bossHealthText;
     private readonly List<MoveSlotUI> _moveSlots = new List<MoveSlotUI>();
 
+    // Status pill (heat mode / hidden assist)
+    private GameObject _statusPill;
+    private Text _statusText;
+    private Image _statusPillImage;
+
     private float _nextLookupTime;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Bootstrap()
     {
-        if (FindObjectOfType<PlayerHUD>() != null)
+        if (FindFirstObjectByType<PlayerHUD>() != null)
             return;
 
-        if (FindObjectOfType<PlayerCombatController>() == null &&
-            FindObjectOfType<PlayerMovement>() == null)
+        if (FindFirstObjectByType<PlayerCombatController>() == null &&
+            FindFirstObjectByType<PlayerMovement>() == null)
             return;
 
         GameObject hudObject = new GameObject("PlayerHUD", typeof(RectTransform), typeof(PlayerHUD));
@@ -62,6 +98,7 @@ public class PlayerHUD : MonoBehaviour
         _instance = this;
         EnsureCanvas();
         BuildHud();
+        PreloadAbilitySprites();
     }
 
     private void OnDestroy()
@@ -74,8 +111,10 @@ public class PlayerHUD : MonoBehaviour
     {
         TryResolveReferences();
         UpdatePlayerHealth();
+        UpdateStamina();
         UpdateBossHealth();
         UpdateMoveStrip();
+        UpdateStatusPill();
     }
 
     private void EnsureCanvas()
@@ -153,59 +192,111 @@ public class PlayerHUD : MonoBehaviour
         _bossRoot.SetActive(false);
 
         RectTransform bottomHud = CreateElement("BottomHud", transform);
-        SetAnchoredBox(bottomHud, new Vector2(0.5f, 0f), new Vector2(1120f, 190f), new Vector2(0f, 18f));
+        SetAnchoredBox(bottomHud, new Vector2(0.5f, 0f), new Vector2(960f, 110f), new Vector2(0f, 14f));
 
+        // ── Player panel — card style matching ability bar ──────────────────
         RectTransform playerPanel = CreateElement("PlayerPanel", bottomHud);
-        SetAnchoredBox(playerPanel, new Vector2(0f, 0f), new Vector2(280f, 122f), new Vector2(0f, 0f), new Vector2(0f, 0f));
-        AddImage(playerPanel.gameObject, new Color(0.05f, 0.05f, 0.06f, 0.96f));
-        CreateEdge(playerPanel, new Color(0.16f, 0.57f, 0.26f), 6f, edgeTop: true);
+        SetAnchoredBox(playerPanel, new Vector2(0f, 0f), new Vector2(290f, 116f), new Vector2(0f, 0f), new Vector2(0f, 0f));
+        AddImage(playerPanel.gameObject, new Color(0.06f, 0.06f, 0.08f, 0.97f));
 
-        CreateText(
-            "PlayerLabel",
-            playerPanel,
-            "PLAYER",
-            22,
-            TextAnchor.UpperLeft,
-            new Color(0.95f, 0.92f, 0.87f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(20f, -12f),
-            new Vector2(160f, 26f));
+        // Gold borders — all 4 sides (3px), same as ability cards
+        { var b = AddImage(CreateElement("BT", playerPanel).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+          b.rectTransform.anchorMin = new Vector2(0f,1f); b.rectTransform.anchorMax = Vector2.one;
+          b.rectTransform.pivot = new Vector2(0.5f,1f); b.rectTransform.sizeDelta = new Vector2(0f,3f); b.rectTransform.anchoredPosition = Vector2.zero; }
+        { var b = AddImage(CreateElement("BB", playerPanel).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+          b.rectTransform.anchorMin = Vector2.zero; b.rectTransform.anchorMax = new Vector2(1f,0f);
+          b.rectTransform.pivot = new Vector2(0.5f,0f); b.rectTransform.sizeDelta = new Vector2(0f,3f); b.rectTransform.anchoredPosition = Vector2.zero; }
+        { var b = AddImage(CreateElement("BL", playerPanel).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+          b.rectTransform.anchorMin = Vector2.zero; b.rectTransform.anchorMax = new Vector2(0f,1f);
+          b.rectTransform.pivot = new Vector2(0f,0.5f); b.rectTransform.sizeDelta = new Vector2(3f,0f); b.rectTransform.anchoredPosition = Vector2.zero; }
+        { var b = AddImage(CreateElement("BR", playerPanel).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+          b.rectTransform.anchorMin = new Vector2(1f,0f); b.rectTransform.anchorMax = Vector2.one;
+          b.rectTransform.pivot = new Vector2(1f,0.5f); b.rectTransform.sizeDelta = new Vector2(3f,0f); b.rectTransform.anchoredPosition = Vector2.zero; }
 
+        // Dark header strip (top ~32% of card)
+        var ppHeader = AddImage(CreateElement("Header", playerPanel).gameObject, new Color(0.04f, 0.04f, 0.06f, 1f));
+        ppHeader.rectTransform.anchorMin = new Vector2(0f, 0.68f); ppHeader.rectTransform.anchorMax = Vector2.one;
+        ppHeader.rectTransform.offsetMin = new Vector2(3f, 0f); ppHeader.rectTransform.offsetMax = new Vector2(-3f, -3f);
+
+        // "KARYS" in gold — left of header
+        CreateText("PlayerLabel", ppHeader.transform, "KARYS", 20,
+            TextAnchor.MiddleLeft, new Color(0.97f, 0.84f, 0.28f),
+            Vector2.zero, Vector2.one, new Vector2(0f, 0.5f),
+            new Vector2(12f, 0f), new Vector2(120f, 32f));
+
+        // HP numbers — right of header
+        _playerHealthText = CreateText("PlayerHealthText", ppHeader.transform, "0 / 0", 13,
+            TextAnchor.MiddleRight, new Color(0.85f, 0.85f, 0.88f),
+            Vector2.zero, Vector2.one, new Vector2(1f, 0.5f),
+            new Vector2(-10f, 0f), new Vector2(120f, 32f));
+
+        // Health bar — sits below header strip
         RectTransform playerBarFrame = CreateElement("PlayerBarFrame", playerPanel);
-        SetAnchoredBox(playerBarFrame, new Vector2(0f, 0f), new Vector2(236f, 28f), new Vector2(20f, 36f), new Vector2(0f, 0f));
-        AddImage(playerBarFrame.gameObject, new Color(0.13f, 0.12f, 0.12f, 1f));
+        playerBarFrame.anchorMin = new Vector2(0f, 0.36f); playerBarFrame.anchorMax = new Vector2(1f, 0.66f);
+        playerBarFrame.offsetMin = new Vector2(10f, 0f); playerBarFrame.offsetMax = new Vector2(-10f, 0f);
+        AddImage(playerBarFrame.gameObject, new Color(0.10f, 0.10f, 0.12f, 1f));
 
         _playerHealthFill = CreateElement("PlayerHealthFill", playerBarFrame);
-        Stretch(_playerHealthFill, 4f, 4f, 4f, 4f);
+        Stretch(_playerHealthFill, 3f, 3f, 3f, 3f);
         _playerHealthFillImage = AddImage(_playerHealthFill.gameObject, new Color(0.21f, 0.74f, 0.28f));
 
-        _playerHealthText = CreateText(
-            "PlayerHealthText",
-            playerPanel,
-            "0 / 0",
-            18,
-            TextAnchor.MiddleLeft,
+        // Thin gold accent line under health bar label
+        { var acc = AddImage(CreateElement("HAcc", playerBarFrame).gameObject, new Color(0.85f, 0.68f, 0.18f, 0.5f));
+          acc.rectTransform.anchorMin = Vector2.zero; acc.rectTransform.anchorMax = new Vector2(1f,0f);
+          acc.rectTransform.pivot = new Vector2(0.5f,0f); acc.rectTransform.sizeDelta = new Vector2(0f,1f); acc.rectTransform.anchoredPosition = Vector2.zero; }
+
+        // Stamina bar — bottom strip
+        RectTransform staminaBarFrame = CreateElement("StaminaBarFrame", playerPanel);
+        staminaBarFrame.anchorMin = new Vector2(0f, 0.08f); staminaBarFrame.anchorMax = new Vector2(1f, 0.32f);
+        staminaBarFrame.offsetMin = new Vector2(10f, 0f); staminaBarFrame.offsetMax = new Vector2(-10f, 0f);
+        AddImage(staminaBarFrame.gameObject, new Color(0.08f, 0.08f, 0.10f, 1f));
+
+        _staminaFill = CreateElement("StaminaFill", staminaBarFrame);
+        Stretch(_staminaFill, 3f, 3f, 3f, 3f);
+        AddImage(_staminaFill.gameObject, new Color(0.22f, 0.60f, 0.90f));
+
+        _staminaText = CreateText("StaminaText", staminaBarFrame.transform, "STA", 9,
+            TextAnchor.MiddleLeft, new Color(0.55f, 0.80f, 1f),
+            Vector2.zero, Vector2.one, new Vector2(0f, 0.5f),
+            new Vector2(5f, 0f), new Vector2(40f, 18f));
+
+        // ── Status pill — shows HEAT MODE / ASSIST in bottom-left ───────────
+        _statusPill = new GameObject("StatusPill");
+        _statusPill.transform.SetParent(transform, false);
+        RectTransform pillRT = _statusPill.AddComponent<RectTransform>();
+        pillRT.anchorMin = new Vector2(0f, 0f);
+        pillRT.anchorMax = new Vector2(0f, 0f);
+        pillRT.pivot     = new Vector2(0f, 0f);
+        pillRT.sizeDelta = new Vector2(180f, 32f);
+        pillRT.anchoredPosition = new Vector2(20f, 240f);
+        _statusPillImage = _statusPill.AddComponent<Image>();
+        _statusPillImage.sprite = GetWhiteSprite();
+        _statusPillImage.color  = new Color(0.8f, 0.4f, 0.1f, 0.88f);
+        _statusPillImage.raycastTarget = false;
+
+        _statusText = CreateText(
+            "StatusText",
+            _statusPill.transform,
+            "HEAT MODE",
+            16,
+            TextAnchor.MiddleCenter,
             Color.white,
-            new Vector2(0f, 0f),
-            new Vector2(0f, 0f),
-            new Vector2(0f, 0f),
-            new Vector2(20f, 12f),
-            new Vector2(200f, 20f));
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+            Vector2.zero,
+            new Vector2(180f, 32f));
+        _statusPill.SetActive(false);
 
         RectTransform moveStrip = CreateElement("MoveStrip", bottomHud);
-        SetAnchoredBox(moveStrip, new Vector2(1f, 0f), new Vector2(814f, 126f), new Vector2(0f, 0f), new Vector2(1f, 0f));
-        AddImage(moveStrip.gameObject, new Color(0.05f, 0.05f, 0.06f, 0.96f));
-        CreateEdge(moveStrip, new Color(0.73f, 0.58f, 0.23f), 6f, edgeTop: true);
+        SetAnchoredBox(moveStrip, new Vector2(1f, 0f), new Vector2(640f, 96f), new Vector2(0f, 0f), new Vector2(1f, 0f));
+        AddImage(moveStrip.gameObject, new Color(0.04f, 0.04f, 0.05f, 0.0f)); // transparent strip bg
 
         HorizontalLayoutGroup layout = moveStrip.gameObject.AddComponent<HorizontalLayoutGroup>();
-        layout.padding = new RectOffset(16, 16, 14, 14);
-        layout.spacing = 12f;
-        layout.childAlignment = TextAnchor.MiddleCenter;
-        layout.childControlWidth = false;
-        layout.childControlHeight = false;
-        layout.childForceExpandWidth = false;
+        layout.padding    = new RectOffset(0, 0, 0, 0);
+        layout.spacing    = 6f;
+        layout.childAlignment       = TextAnchor.MiddleCenter;
+        layout.childControlWidth    = false;
+        layout.childControlHeight   = false;
+        layout.childForceExpandWidth  = false;
         layout.childForceExpandHeight = false;
 
         for (int i = 0; i < 6; i++)
@@ -216,86 +307,107 @@ public class PlayerHUD : MonoBehaviour
     {
         MoveSlotUI slot = new MoveSlotUI();
 
+        // ── Card root ─────────────────────────────────────────────────────────
         slot.Root = CreateElement("MoveSlot", parent);
-        LayoutElement layoutElement = slot.Root.gameObject.AddComponent<LayoutElement>();
-        layoutElement.preferredWidth = 118f;
-        layoutElement.preferredHeight = 98f;
+        var le = slot.Root.gameObject.AddComponent<LayoutElement>();
+        le.preferredWidth  = 114f;
+        le.preferredHeight = 88f;
 
-        slot.Background = AddImage(slot.Root.gameObject, new Color(0.12f, 0.12f, 0.14f, 1f));
+        // Dark card background
+        slot.Background = AddImage(slot.Root.gameObject, new Color(0.06f, 0.06f, 0.08f, 0.96f));
 
-        slot.Accent = AddImage(CreateElement("Accent", slot.Root).gameObject, new Color(0.73f, 0.58f, 0.23f));
-        Stretch(slot.Accent.rectTransform, 0f, 92f, 0f, 0f);
+        // Gold border — top
+        var borderTop = AddImage(CreateElement("BT", slot.Root).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+        Stretch(borderTop.rectTransform, 0f, 0f, 0f, 0f);
+        borderTop.rectTransform.anchorMin = new Vector2(0f, 1f);
+        borderTop.rectTransform.anchorMax = new Vector2(1f, 1f);
+        borderTop.rectTransform.pivot     = new Vector2(0.5f, 1f);
+        borderTop.rectTransform.sizeDelta = new Vector2(0f, 2f);
+        borderTop.rectTransform.anchoredPosition = Vector2.zero;
 
-        slot.IconPlate = AddImage(CreateElement("IconPlate", slot.Root).gameObject, new Color(0.2f, 0.2f, 0.24f, 1f));
-        Stretch(slot.IconPlate.rectTransform, 7f, 28f, 7f, 8f);
+        // Gold border — bottom
+        var borderBot = AddImage(CreateElement("BB", slot.Root).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+        borderBot.rectTransform.anchorMin = Vector2.zero;
+        borderBot.rectTransform.anchorMax = new Vector2(1f, 0f);
+        borderBot.rectTransform.pivot     = new Vector2(0.5f, 0f);
+        borderBot.rectTransform.sizeDelta = new Vector2(0f, 2f);
+        borderBot.rectTransform.anchoredPosition = Vector2.zero;
 
+        // Gold border — left
+        var borderL = AddImage(CreateElement("BL", slot.Root).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+        borderL.rectTransform.anchorMin = Vector2.zero;
+        borderL.rectTransform.anchorMax = new Vector2(0f, 1f);
+        borderL.rectTransform.pivot     = new Vector2(0f, 0.5f);
+        borderL.rectTransform.sizeDelta = new Vector2(2f, 0f);
+        borderL.rectTransform.anchoredPosition = Vector2.zero;
+
+        // Gold border — right
+        var borderR = AddImage(CreateElement("BR", slot.Root).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
+        borderR.rectTransform.anchorMin = new Vector2(1f, 0f);
+        borderR.rectTransform.anchorMax = Vector2.one;
+        borderR.rectTransform.pivot     = new Vector2(1f, 0.5f);
+        borderR.rectTransform.sizeDelta = new Vector2(2f, 0f);
+        borderR.rectTransform.anchoredPosition = Vector2.zero;
+
+        slot.Accent = borderTop; // kept for tinting via AccentColor
+
+        // ── Art fills the top ~65% of the card ───────────────────────────────
+        slot.IconPlate = AddImage(CreateElement("Art", slot.Root).gameObject, new Color(0.12f, 0.12f, 0.16f, 1f));
+        slot.IconPlate.rectTransform.anchorMin = new Vector2(0f, 0.28f);
+        slot.IconPlate.rectTransform.anchorMax = Vector2.one;
+        slot.IconPlate.rectTransform.offsetMin = new Vector2(2f, 0f);
+        slot.IconPlate.rectTransform.offsetMax = new Vector2(-2f, -2f);
+        slot.IconPlate.preserveAspect = false;
+        slot.IconSprite = slot.IconPlate;
+
+        // Fallback letter icon (centre of art area)
         slot.IconText = CreateText(
-            "IconText",
-            slot.IconPlate.transform,
-            "--",
-            30,
-            TextAnchor.MiddleCenter,
-            Color.white,
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            Vector2.zero,
-            new Vector2(80f, 42f));
+            "IconText", slot.IconPlate.transform, "--", 26,
+            TextAnchor.MiddleCenter, new Color(0.97f, 0.92f, 0.82f),
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(90f, 40f));
 
+        // ── Bottom info strip (bottom 28%) ────────────────────────────────────
+        var infoStrip = AddImage(CreateElement("Info", slot.Root).gameObject, new Color(0.06f, 0.06f, 0.09f, 1f));
+        infoStrip.rectTransform.anchorMin = Vector2.zero;
+        infoStrip.rectTransform.anchorMax = new Vector2(1f, 0.28f);
+        infoStrip.rectTransform.offsetMin = new Vector2(2f, 2f);
+        infoStrip.rectTransform.offsetMax = new Vector2(-2f, 0f);
+
+        // Key bind — top-left of info strip (gold)
         slot.KeyText = CreateText(
-            "KeyText",
-            slot.Root,
-            "--",
-            12,
-            TextAnchor.UpperLeft,
-            new Color(0.96f, 0.84f, 0.42f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(0f, 1f),
-            new Vector2(10f, -8f),
-            new Vector2(96f, 16f));
-        slot.KeyText.resizeTextForBestFit = true;
-        slot.KeyText.resizeTextMinSize = 8;
-        slot.KeyText.resizeTextMaxSize = 12;
+            "KeyText", infoStrip.transform, "--", 10,
+            TextAnchor.UpperLeft, new Color(0.95f, 0.78f, 0.20f),
+            Vector2.zero, Vector2.one, new Vector2(0f, 1f),
+            new Vector2(4f, -2f), new Vector2(30f, 14f));
 
+        // Ability name — bottom of info strip (white)
         slot.NameText = CreateText(
-            "NameText",
-            slot.Root,
-            "Move",
-            13,
-            TextAnchor.LowerCenter,
-            new Color(0.94f, 0.92f, 0.88f),
-            new Vector2(0.5f, 0f),
-            new Vector2(0.5f, 0f),
-            new Vector2(0.5f, 0f),
-            new Vector2(0f, 8f),
-            new Vector2(104f, 18f));
+            "NameText", infoStrip.transform, "Move", 10,
+            TextAnchor.LowerCenter, new Color(0.92f, 0.90f, 0.86f),
+            Vector2.zero, Vector2.one, new Vector2(0.5f, 0f),
+            new Vector2(0f, 2f), new Vector2(110f, 14f));
         slot.NameText.resizeTextForBestFit = true;
-        slot.NameText.resizeTextMinSize = 9;
-        slot.NameText.resizeTextMaxSize = 13;
+        slot.NameText.resizeTextMinSize    = 8;
+        slot.NameText.resizeTextMaxSize    = 10;
 
-        slot.CooldownOverlay = AddImage(CreateElement("CooldownOverlay", slot.IconPlate.transform).gameObject, new Color(0.04f, 0.04f, 0.05f, 0.78f));
+        // ── Cooldown overlay (over art) ───────────────────────────────────────
+        slot.CooldownOverlay = AddImage(CreateElement("CDOverlay", slot.IconPlate.transform).gameObject,
+            new Color(0.03f, 0.03f, 0.05f, 0.82f));
         Stretch(slot.CooldownOverlay.rectTransform, 0f, 0f, 0f, 0f);
-        slot.CooldownOverlay.type = Image.Type.Filled;
-        slot.CooldownOverlay.fillMethod = Image.FillMethod.Vertical;
-        slot.CooldownOverlay.fillOrigin = (int)Image.OriginVertical.Top;
-        slot.CooldownOverlay.fillAmount = 0f;
+        slot.CooldownOverlay.type        = Image.Type.Filled;
+        slot.CooldownOverlay.fillMethod  = Image.FillMethod.Vertical;
+        slot.CooldownOverlay.fillOrigin  = (int)Image.OriginVertical.Top;
+        slot.CooldownOverlay.fillAmount  = 0f;
 
         slot.CooldownText = CreateText(
-            "CooldownText",
-            slot.IconPlate.transform,
-            string.Empty,
-            24,
-            TextAnchor.MiddleCenter,
-            Color.white,
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            Vector2.zero,
-            new Vector2(80f, 36f));
+            "CDText", slot.IconPlate.transform, string.Empty, 20,
+            TextAnchor.MiddleCenter, Color.white,
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(80f, 30f));
         slot.CooldownText.resizeTextForBestFit = true;
-        slot.CooldownText.resizeTextMinSize = 16;
-        slot.CooldownText.resizeTextMaxSize = 24;
+        slot.CooldownText.resizeTextMinSize    = 14;
+        slot.CooldownText.resizeTextMaxSize    = 20;
 
         return slot;
     }
@@ -308,16 +420,16 @@ public class PlayerHUD : MonoBehaviour
         _nextLookupTime = Time.unscaledTime + 0.5f;
 
         if (_combat == null)
-            _combat = FindObjectOfType<PlayerCombatController>();
+            _combat = FindFirstObjectByType<PlayerCombatController>();
 
         if (_playerHealth == null)
-            _playerHealth = FindObjectOfType<PlayerHealth>();
+            _playerHealth = FindFirstObjectByType<PlayerHealth>();
 
         BossAIController trackedBoss = _combat != null ? _combat.CurrentBoss : null;
         if (trackedBoss != null)
             _boss = trackedBoss;
         else if (_boss == null)
-            _boss = FindObjectOfType<BossAIController>();
+            _boss = FindFirstObjectByType<BossAIController>();
     }
 
     private void UpdatePlayerHealth()
@@ -330,6 +442,45 @@ public class PlayerHUD : MonoBehaviour
         SetFillWidth(_playerHealthFill, ratio, 4f);
         _playerHealthFillImage.color = Color.Lerp(new Color(0.77f, 0.16f, 0.16f), new Color(0.21f, 0.74f, 0.28f), ratio);
         _playerHealthText.text = $"{_playerHealth.CurrentHealth:0} / {_playerHealth.MaxHealth:0}";
+    }
+
+    private void UpdateStamina()
+    {
+        if (_staminaFill == null) return;
+
+        RollSystem rs = RollSystem.Instance;
+        if (rs == null) return;
+
+        float ratio = rs.MaxStamina > 0f ? Mathf.Clamp01(rs.CurrentStamina / rs.MaxStamina) : 1f;
+        SetFillWidth(_staminaFill, ratio, 3f);
+
+        if (_staminaText != null)
+            _staminaText.text = $"STA  {rs.CurrentStamina:0}/{rs.MaxStamina:0}";
+    }
+
+    private void UpdateStatusPill()
+    {
+        if (_statusPill == null) return;
+
+        FightProgressionManager fpm = FightProgressionManager.Instance;
+        if (fpm == null) { _statusPill.SetActive(false); return; }
+
+        if (fpm.IsHeatModeActive)
+        {
+            _statusPill.SetActive(true);
+            _statusText.text = "HEAT MODE";
+            _statusPillImage.color = new Color(0.85f, 0.35f, 0.05f, 0.90f);
+        }
+        else if (fpm.IsHiddenAssistActive)
+        {
+            _statusPill.SetActive(true);
+            _statusText.text = "ASSISTED";
+            _statusPillImage.color = new Color(0.10f, 0.45f, 0.75f, 0.88f);
+        }
+        else
+        {
+            _statusPill.SetActive(false);
+        }
     }
 
     private void UpdateBossHealth()
@@ -368,42 +519,54 @@ public class PlayerHUD : MonoBehaviour
             }
 
             slot.Root.gameObject.SetActive(true);
-            slot.KeyText.text = moveData.Keybind;
+            slot.KeyText.text  = moveData.Keybind;
             slot.NameText.text = moveData.DisplayName;
             slot.IconText.text = moveData.IconLabel;
+
+            // Show ability art or fallback letter
+            Sprite art = GetAbilitySprite(moveData.DisplayName);
+            if (art != null)
+            {
+                slot.IconPlate.sprite = art;
+                slot.IconPlate.color  = moveData.IsUsable ? Color.white : new Color(0.55f, 0.55f, 0.58f, 1f);
+                slot.IconText.gameObject.SetActive(false);
+            }
+            else
+            {
+                slot.IconPlate.sprite = GetWhiteSprite();
+                slot.IconPlate.color  = new Color(0.12f, 0.12f, 0.16f, 1f);
+                slot.IconText.gameObject.SetActive(true);
+            }
 
             bool onCooldown = moveData.RemainingCooldown > 0.01f;
             float cooldownRatio = moveData.Cooldown > 0f
                 ? Mathf.Clamp01(moveData.RemainingCooldown / moveData.Cooldown)
                 : 0f;
 
-            slot.Accent.color = moveData.AccentColor;
+            // Gold border dims when on cooldown or not usable
+            float borderAlpha = !moveData.IsUsable ? 0.35f : onCooldown ? 0.6f : 1f;
+            Color gold = new Color(0.85f, 0.68f, 0.18f, borderAlpha);
+            slot.Accent.color = gold;
+
             slot.CooldownOverlay.fillAmount = cooldownRatio;
-            slot.CooldownOverlay.enabled = onCooldown;
+            slot.CooldownOverlay.enabled    = onCooldown;
             slot.CooldownText.text = onCooldown ? moveData.RemainingCooldown.ToString("0.0") : string.Empty;
 
-            Color iconPlateColor = Color.Lerp(new Color(0.17f, 0.17f, 0.2f), moveData.AccentColor * 0.42f, 0.6f);
-            if (onCooldown)
-                iconPlateColor *= 0.65f;
-            if (!moveData.IsUsable)
-                iconPlateColor *= 0.55f;
-
-            slot.IconPlate.color = iconPlateColor;
             slot.Background.color = moveData.IsUsable
-                ? new Color(0.12f, 0.12f, 0.14f, 1f)
-                : new Color(0.09f, 0.09f, 0.1f, 1f);
+                ? new Color(0.06f, 0.06f, 0.08f, 0.96f)
+                : new Color(0.04f, 0.04f, 0.05f, 0.96f);
 
             slot.IconText.color = moveData.IsUsable
-                ? new Color(0.97f, 0.96f, 0.94f, onCooldown ? 0.55f : 1f)
-                : new Color(0.65f, 0.65f, 0.68f, 0.8f);
+                ? new Color(0.97f, 0.92f, 0.82f, onCooldown ? 0.5f : 1f)
+                : new Color(0.55f, 0.55f, 0.58f, 0.8f);
 
             slot.NameText.color = moveData.IsUsable
-                ? new Color(0.94f, 0.92f, 0.88f)
-                : new Color(0.56f, 0.56f, 0.58f);
+                ? new Color(0.92f, 0.90f, 0.86f)
+                : new Color(0.45f, 0.45f, 0.47f);
 
             slot.KeyText.color = moveData.IsUsable
-                ? moveData.AccentColor
-                : new Color(0.45f, 0.45f, 0.47f);
+                ? new Color(0.95f, 0.78f, 0.20f)
+                : new Color(0.40f, 0.40f, 0.42f);
         }
     }
 

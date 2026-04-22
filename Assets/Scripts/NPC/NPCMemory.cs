@@ -17,7 +17,6 @@ public class NPCMemory
     public string personality;
     public int relationshipScore;
     public List<NPCInteraction> interactions = new List<NPCInteraction>();
-    public Dictionary<string, string> learnedPatterns = new Dictionary<string, string>();
 
     public NPCMemory(string id, string personalityType, int score)
     {

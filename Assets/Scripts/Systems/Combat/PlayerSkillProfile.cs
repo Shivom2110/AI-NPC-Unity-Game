@@ -13,7 +13,7 @@ public class PlayerSkillProfile : ScriptableObject
     [SerializeField] private DifficultySettingsAsset difficultySettingsAsset;
 
     [Header("Persistent Stats")]
-    [Range(0f, 100f)] public float currentSkillScore = 50f;
+    [Range(0f, 100f)] public float currentSkillScore = 15f;
     public int sessionCount;
     public float averageReactionTime = 350f;
     [Range(0f, 1f)] public float parrySuccessRate = 0.5f;
@@ -37,6 +37,29 @@ public class PlayerSkillProfile : ScriptableObject
         profile.hideFlags = HideFlags.HideAndDontSave;
         profile.LoadProfile();
         return profile;
+    }
+
+    /// <summary>
+    /// Deletes the saved profile file, resetting all progress back to defaults.
+    /// </summary>
+    public void ResetProfile()
+    {
+        string savePath = GetSavePath();
+        if (File.Exists(savePath))
+            File.Delete(savePath);
+
+        currentSkillScore    = 15f;
+        sessionCount         = 0;
+        averageReactionTime  = 350f;
+        parrySuccessRate     = 0.5f;
+        dodgeSuccessRate     = 0.5f;
+        favoriteCombo        = "None";
+        comboVarietyScore    = 0.5f;
+        damageDealtAverage   = 0f;
+        damageTakenAverage   = 0f;
+        fightDuration        = 0f;
+        skillTrend           = 0f;
+        difficultyMultiplier = 1f;
     }
 
     /// <summary>

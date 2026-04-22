@@ -10,13 +10,17 @@ public class FightProgressionManager : MonoBehaviour
     [Header("Difficulty")]
     [SerializeField] private DifficultySettingsAsset difficultySettingsAsset;
     [SerializeField] private PlayerSkillProfile playerSkillProfile;
-    [SerializeField] private float liveAdjustmentInterval = 30f;
-    [SerializeField] [Range(0f, 1f)] private float liveBlendFactor = 0.45f;
+    [SerializeField] private float liveAdjustmentInterval = 10f;  // was 30s — much faster response
+    [SerializeField] [Range(0f, 1f)] private float liveBlendFactor = 0.40f;
+
+    [Header("Grace Period (fight start)")]
+    [SerializeField] private float gracePeriodSeconds = 45f;       // first N seconds always use minimum difficulty
+    [SerializeField] [Range(0f, 50f)] private float gracePeriodScoreOverride = 5f;  // skill score treated as this during grace
 
     [Header("Hidden Assist")]
-    [SerializeField] [Range(0.1f, 0.5f)] private float strugglingHealthThreshold = 0.3f;
-    [SerializeField] private float strugglingDuration = 20f;
-    [SerializeField] [Range(0.5f, 1f)] private float hiddenAssistDamageMultiplier = 0.85f;
+    [SerializeField] [Range(0.1f, 0.5f)] private float strugglingHealthThreshold = 0.35f;  // was 0.3
+    [SerializeField] private float strugglingDuration = 8f;        // was 20s — activates much sooner
+    [SerializeField] [Range(0.5f, 1f)] private float hiddenAssistDamageMultiplier = 0.80f; // was 0.85 — stronger assist
 
     [Header("Heat Mode")]
     [SerializeField] private int parriesForHeatMode = 3;
@@ -25,7 +29,12 @@ public class FightProgressionManager : MonoBehaviour
 
     [Header("Boss Pressure")]
     [SerializeField] [Range(0.05f, 0.5f)] private float fastBossLossThreshold = 0.2f;
-    [SerializeField] private float bossPressureSampleSeconds = 10f;
+    [SerializeField] private float bossPressureSampleSeconds = 8f;  // was 10s — samples boss HP more often
+
+    [Header("Boss Death Spiral")]
+    [Tooltip("When boss HP drops below this fraction the difficulty is forced to max, making the boss feel desperate and dangerous.")]
+    [SerializeField] [Range(0.05f, 0.4f)] private float deathSpiralThreshold = 0.20f;
+    [SerializeField] [Range(0f, 100f)] private float deathSpiralScoreFloor = 90f;  // treat player skill as at least this when boss is nearly dead
 
     private DifficultySettings currentSettings;
     private bool fightActive;
@@ -35,6 +44,7 @@ public class FightProgressionManager : MonoBehaviour
     private float heatModeEndTime = -1f;
     private int successfulParryStreak;
     private bool hiddenAssistActive;
+    private bool deathSpiralActive;
     private float lastBossHealthPercent = 1f;
     private float lastBossHealthSampleTime;
 
@@ -46,6 +56,12 @@ public class FightProgressionManager : MonoBehaviour
 
     /// <summary>Returns the player's current damage multiplier.</summary>
     public float CurrentPlayerDamageMultiplier => currentSettings.playerDamageMultiplier;
+
+    /// <summary>True while the player is in Heat Mode (3 consecutive successful parries).</summary>
+    public bool IsHeatModeActive => fightActive && Time.time < heatModeEndTime;
+
+    /// <summary>True while hidden assist is reducing boss damage for a struggling player.</summary>
+    public bool IsHiddenAssistActive => fightActive && hiddenAssistActive;
 
     private void Awake()
     {
@@ -114,6 +130,7 @@ public class FightProgressionManager : MonoBehaviour
         heatModeEndTime = -1f;
         successfulParryStreak = 0;
         hiddenAssistActive = false;
+        deathSpiralActive = false;
 
         CombatTracker.Instance?.ResetFight();
         CombatTracker.Instance?.NotifyFightStarted();
@@ -156,15 +173,36 @@ public class FightProgressionManager : MonoBehaviour
 
     private void RecalculateDifficulty()
     {
-        float skillScore = CombatTracker.Instance != null && CombatTracker.Instance.CurrentSnapshot.skillScore > 0f
+        float rawScore = CombatTracker.Instance != null && CombatTracker.Instance.CurrentSnapshot.skillScore > 0f
             ? CombatTracker.Instance.CurrentSnapshot.skillScore
             : playerSkillProfile.currentSkillScore;
 
+        float skillScore = rawScore * playerSkillProfile.difficultyMultiplier;
+
+        // ── Grace period: clamp score to a very low value for the first N seconds
+        //    so every new fight starts gentle regardless of past history.
+        bool inGrace = fightStartTime >= 0f && Time.time - fightStartTime < gracePeriodSeconds;
+        if (inGrace)
+            skillScore = Mathf.Min(skillScore, gracePeriodScoreOverride);
+
+        // ── Boss death spiral: when boss is nearly dead, treat skill as very high
+        //    so the difficulty engine pushes the boss to maximum aggression / speed.
+        BossAIController activeBoss = BossAIController.ActiveBoss;
+        if (activeBoss != null && activeBoss.GetHealthPercent() < deathSpiralThreshold)
+        {
+            skillScore = Mathf.Max(skillScore, deathSpiralScoreFloor);
+            deathSpiralActive = true;
+        }
+        else
+        {
+            deathSpiralActive = false;
+        }
+
         DifficultySettings targetSettings = DifficultyEngine.EvaluateSkillScore(
-            Mathf.Clamp(skillScore * playerSkillProfile.difficultyMultiplier, 0f, 100f),
+            Mathf.Clamp(skillScore, 0f, 100f),
             difficultySettingsAsset);
 
-        if (hiddenAssistActive)
+        if (hiddenAssistActive && !deathSpiralActive)  // don't soften the boss when it's at death's door
         {
             targetSettings.bossDamageMultiplier *= hiddenAssistDamageMultiplier;
             targetSettings.hiddenAssistMultiplier = hiddenAssistDamageMultiplier;
@@ -173,13 +211,24 @@ public class FightProgressionManager : MonoBehaviour
         if (Time.time < heatModeEndTime)
             targetSettings.playerDamageMultiplier *= heatModeDamageMultiplier;
 
-        currentSettings = DifficultyEngine.Blend(currentSettings, targetSettings, liveBlendFactor);
+        // During death spiral use a faster blend so the escalation feels sudden.
+        float blendFactor = deathSpiralActive ? Mathf.Min(liveBlendFactor * 2f, 0.85f) : liveBlendFactor;
+
+        currentSettings = DifficultyEngine.Blend(currentSettings, targetSettings, blendFactor);
         CombatEventSystem.RaiseDifficultyAdjusted(currentSettings);
+
+        Debug.Log($"[FPM] Recalc — rawScore={rawScore:F1}  eff={skillScore:F1}  " +
+                  $"grace={inGrace}  deathSpiral={deathSpiralActive}  " +
+                  $"bossDmg×{currentSettings.BossDamageMultiplier:F2}  " +
+                  $"telScale={currentSettings.TelegraphScale:F2}");
     }
 
     private void BroadcastSettings(float blend)
     {
-        DifficultySettings targetSettings = playerSkillProfile.GetDifficultyRecommendation();
+        // At fight start always treat the player as a beginner (grace period score)
+        // so the first encounter is forgiving regardless of saved profile.
+        DifficultySettings targetSettings = DifficultyEngine.EvaluateSkillScore(
+            gracePeriodScoreOverride, difficultySettingsAsset);
         currentSettings = DifficultyEngine.Blend(currentSettings, targetSettings, blend);
         CombatEventSystem.RaiseDifficultyAdjusted(currentSettings);
     }

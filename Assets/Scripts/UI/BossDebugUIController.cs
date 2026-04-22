@@ -14,7 +14,7 @@ public class BossDebugUIController : MonoBehaviour
     {
         if (targetBoss == null)
         {
-            targetBoss = FindObjectOfType<BossAIController>();
+            targetBoss = FindFirstObjectByType<BossAIController>();
             if (targetBoss == null) return;
         }
 
