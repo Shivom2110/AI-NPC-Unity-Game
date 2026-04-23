@@ -24,9 +24,9 @@ public class AbilityCardFlash : MonoBehaviour
         {
             { PlayerAttackType.AutoAttack, ("strike",   "Quick Fang",              "") },
             { PlayerAttackType.Attack2,    ("heavy",    "Sun-Sunder",              "") },
-            { PlayerAttackType.Attack3,    ("flashy",   "Serpent's Grace",         "Dodge and empower daggers\nwith serpentine poison.") },
-            { PlayerAttackType.Attack4,    ("parry",    "Retaliator's Shield",     "Channel defensive energy.\nBlock and stun the attacker.") },
-            { PlayerAttackType.Ultimate,   ("ultimate", "Solar Cobra's Judgement", "Unleash the full fury of\nthe celestial serpent.") },
+            { PlayerAttackType.Attack3,    ("flashy",   "Serpent's Grace",         "A sudden flourish that punishes\nhesitation with poisoned steel.") },
+            { PlayerAttackType.Attack4,    ("parry",    "Retaliator's Shield",     "Turn the blow aside and open\na killing lane for the counter.") },
+            { PlayerAttackType.Ultimate,   ("ultimate", "Solar Cobra's Judgement", "A brutal finishing art meant to\nbreak the boss's rhythm in one burst.") },
         };
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -47,14 +47,22 @@ public class AbilityCardFlash : MonoBehaviour
 
     private void HandleAttack(PlayerAttackType type, bool landed, float damage)
     {
-        // Skip basic light attacks — too frequent
-        if (type == PlayerAttackType.AutoAttack) return;
-        if (!_data.TryGetValue(type, out var info)) return;
+        if (type == PlayerAttackType.AutoAttack || type == PlayerAttackType.Attack2)
+            return;
+
+        if (!landed && type != PlayerAttackType.Attack4)
+            return;
+
+        if (!_data.TryGetValue(type, out var info))
+            return;
 
         Sprite sprite = Resources.Load<Sprite>($"AbilityIcons/{info.sprite}");
-        if (sprite == null) return;
+        if (sprite == null)
+            return;
 
-        if (_active != null) StopCoroutine(_active);
+        if (_active != null)
+            StopCoroutine(_active);
+
         _active = StartCoroutine(Flash(sprite, info.name, info.desc));
     }
 
@@ -99,7 +107,7 @@ public class AbilityCardFlash : MonoBehaviour
         canvasGO.transform.SetParent(transform);
         var canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 20;
+        canvas.sortingOrder = 24;
         var scaler = canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
@@ -112,12 +120,12 @@ public class AbilityCardFlash : MonoBehaviour
         cardRT.anchorMin        = new Vector2(0f, 0f);
         cardRT.anchorMax        = new Vector2(0f, 0f);
         cardRT.pivot            = new Vector2(0f, 0f);
-        cardRT.sizeDelta        = new Vector2(360f, 210f);
-        cardRT.anchoredPosition = new Vector2(24f, 230f);
+        cardRT.sizeDelta        = new Vector2(340f, 196f);
+        cardRT.anchoredPosition = new Vector2(24f, 250f);
 
         // Dark background frame with golden top border
         _cardBg = _card.AddComponent<Image>();
-        _cardBg.color = new Color(0.04f, 0.04f, 0.06f, 0.93f);
+        _cardBg.color = new Color(0.05f, 0.04f, 0.03f, 0.93f);
 
         var accentGO = new GameObject("Border");
         accentGO.transform.SetParent(_card.transform, false);
@@ -126,6 +134,15 @@ public class AbilityCardFlash : MonoBehaviour
         acRT.pivot     = new Vector2(0.5f, 1f);
         acRT.sizeDelta = new Vector2(0f, 4f); acRT.anchoredPosition = Vector2.zero;
         accentGO.AddComponent<Image>().color = new Color(0.96f, 0.80f, 0.20f);
+
+        var sideAccentGO = new GameObject("SideAccent");
+        sideAccentGO.transform.SetParent(_card.transform, false);
+        var sideAccentRT = sideAccentGO.AddComponent<RectTransform>();
+        sideAccentRT.anchorMin = Vector2.zero;
+        sideAccentRT.anchorMax = new Vector2(0f, 1f);
+        sideAccentRT.pivot = new Vector2(0f, 0.5f);
+        sideAccentRT.sizeDelta = new Vector2(5f, 0f);
+        sideAccentGO.AddComponent<Image>().color = new Color(0.72f, 0.18f, 0.12f, 0.9f);
 
         // Full-card art (fills card, preserves aspect)
         var artGO = new GameObject("Art");
@@ -144,7 +161,7 @@ public class AbilityCardFlash : MonoBehaviour
         overlayRT.anchorMin = Vector2.zero; overlayRT.anchorMax = new Vector2(1f, 0.42f);
         overlayRT.offsetMin = new Vector2(4f, 4f); overlayRT.offsetMax = new Vector2(-4f, 0f);
         _overlay = overlayGO.AddComponent<Image>();
-        _overlay.color = new Color(0.03f, 0.03f, 0.05f, 0.78f);
+        _overlay.color = new Color(0.06f, 0.03f, 0.02f, 0.80f);
 
         Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 

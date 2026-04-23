@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 /// <summary>
@@ -33,11 +35,21 @@ public class FightStatsScreen : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        EnsureEventSystem();
         BuildUI();
     }
 
-    private void OnEnable()  => CombatEventSystem.OnFightEnd += OnFightEnd;
-    private void OnDisable() => CombatEventSystem.OnFightEnd -= OnFightEnd;
+    private void OnEnable()
+    {
+        CombatEventSystem.OnFightEnd += OnFightEnd;
+        SceneManager.sceneLoaded += HandleSceneLoaded;
+    }
+
+    private void OnDisable()
+    {
+        CombatEventSystem.OnFightEnd -= OnFightEnd;
+        SceneManager.sceneLoaded -= HandleSceneLoaded;
+    }
 
     // ── UI Construction ────────────────────────────────────────────────────────
 
@@ -180,8 +192,34 @@ public class FightStatsScreen : MonoBehaviour
 
     private void Restart()
     {
+        HideImmediate();
         Time.timeScale = 1f;
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        HideImmediate();
+        Time.timeScale = 1f;
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    private void HideImmediate()
+    {
+        if (_panel != null)
+            _panel.SetActive(false);
+    }
+
+    private static void EnsureEventSystem()
+    {
+        if (FindFirstObjectByType<EventSystem>() != null)
+            return;
+
+        GameObject go = new GameObject("EventSystem");
+        go.AddComponent<EventSystem>();
+        go.AddComponent<InputSystemUIInputModule>();
+        DontDestroyOnLoad(go);
     }
 
     // ── UI Helpers ─────────────────────────────────────────────────────────────

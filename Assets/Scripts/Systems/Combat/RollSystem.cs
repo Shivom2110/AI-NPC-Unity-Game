@@ -49,12 +49,18 @@ public class RollSystem : MonoBehaviour
     {
         CombatEventSystem.OnBossAttackStart += HandleBossAttackStart;
         CombatEventSystem.OnDifficultyAdjusted += HandleDifficultyAdjusted;
+        CombatEventBus.OnBossAttackEnded += HandleAttackEnded;
+        CombatEventBus.OnBossDied += HandleAttackEnded;
+        CombatEventBus.OnPlayerDied += HandleAttackEnded;
     }
 
     private void OnDisable()
     {
         CombatEventSystem.OnBossAttackStart -= HandleBossAttackStart;
         CombatEventSystem.OnDifficultyAdjusted -= HandleDifficultyAdjusted;
+        CombatEventBus.OnBossAttackEnded -= HandleAttackEnded;
+        CombatEventBus.OnBossDied -= HandleAttackEnded;
+        CombatEventBus.OnPlayerDied -= HandleAttackEnded;
     }
 
     private void Update()
@@ -76,7 +82,11 @@ public class RollSystem : MonoBehaviour
         };
 
         if (currentStamina < rollCost)
+        {
+            if (AudioManager.Instance != null)
+                AudioManager.Instance.Play(AudioManager.Instance.sfxOutOfStamina, 0.9f);
             return false;
+        }
 
         currentStamina -= rollCost;
         iframeEndTime = Time.time + iframeDuration;
@@ -110,6 +120,11 @@ public class RollSystem : MonoBehaviour
         }
 
         CombatEventSystem.RaisePlayerDodge(resolution.success, resolution.timingPrecisionMs);
+        CombatEventBus.FirePlayerDodge(resolution.success, resolution.timingPrecisionMs);
+
+        if (resolution.success && AudioManager.Instance != null)
+            AudioManager.Instance.Play(AudioManager.Instance.sfxDodgeRoll, 0.95f);
+
         return true;
     }
 
@@ -135,5 +150,12 @@ public class RollSystem : MonoBehaviour
     private void HandleDifficultyAdjusted(DifficultySettings settings)
     {
         SetMaxStamina(settings.playerMaxStamina, true);
+    }
+
+    private void HandleAttackEnded()
+    {
+        telegraphStartTime = -1f;
+        impactTime = -1f;
+        currentAttack = default;
     }
 }

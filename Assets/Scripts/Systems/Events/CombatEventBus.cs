@@ -79,6 +79,12 @@ public static class CombatEventBus
     /// </summary>
     public static event Action OnBossAttackEnded;
 
+    /// <summary>Fired when the boss finishes its entrance walk and begins its roar animation.</summary>
+    public static event Action OnBossRoar;
+
+    /// <summary>Fired when the boss triggers its second-wind recovery at critically low HP.</summary>
+    public static event Action OnBossSecondWind;
+
     // ── Skill & Difficulty ────────────────────────────────────────────────────
 
     /// <summary>
@@ -150,6 +156,12 @@ public static class CombatEventBus
     public static void FireBossAttackEnded()
         => OnBossAttackEnded?.Invoke();
 
+    public static void FireBossRoar()
+        => OnBossRoar?.Invoke();
+
+    public static void FireBossSecondWind()
+        => OnBossSecondWind?.Invoke();
+
     public static void FireSkillScoreChanged(float oldScore, float newScore)
         => OnSkillScoreChanged?.Invoke(oldScore, newScore);
 
@@ -184,6 +196,8 @@ public static class CombatEventBus
         OnBossPhaseChanged    = null;
         OnBossDied            = null;
         OnBossAttackEnded     = null;
+        OnBossRoar            = null;
+        OnBossSecondWind      = null;
         OnSkillScoreChanged   = null;
         OnDifficultyAdjusted  = null;
         OnHeatModeChanged     = null;

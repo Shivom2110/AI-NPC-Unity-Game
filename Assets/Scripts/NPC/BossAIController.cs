@@ -9,7 +9,7 @@ public class BossAIController : MonoBehaviour
     [SerializeField] private string bossName = "Boss 1";
 
     [Header("Boss Settings")]
-    [SerializeField] private float maxHealth           = 2000f;
+    [SerializeField] private float maxHealth           = 2400f;
     [SerializeField] private int   comboReadDepth      = 2;
     [SerializeField] private float baseCounterCooldown = 1.2f;
 
@@ -94,9 +94,19 @@ public class BossAIController : MonoBehaviour
     private BossAttack _activeAttack;
     private bool _attackActive = false;
     private bool _attackFullyCountered = false;
+    private bool _hitboxOpened = false;
+    private float _attackResolveTime = 0f;
 
     // Roar state
     private float _roarEndTime = 0f;
+
+    // Animation / feel
+    private float _bossSpeed     = 0f;   // smoothed Speed parameter
+    private float _staggerEndTime = 0f;  // blocks movement and attacks during hurt recovery
+
+    [Header("Hit Reaction Timing")]
+    [SerializeField] private float hitStaggerDuration       = 0.40f;
+    [SerializeField] private float interruptStaggerDuration = 0.85f;
 
     public bool ParryWindowOpen => _parryWindowOpen;
     public bool DodgeWindowOpen => _dodgeWindowOpen;
@@ -220,6 +230,7 @@ public class BossAIController : MonoBehaviour
             transform.position = arenaPosition;
             _state             = BossState.Roaring;
             _roarEndTime       = Time.time + roarDuration;
+            _bossSpeed         = 0f;
 
             if (bossAnimator != null)
             {
@@ -228,6 +239,7 @@ public class BossAIController : MonoBehaviour
                 bossAnimator.SetTrigger(RoarHash);
             }
 
+            CombatEventBus.FireBossRoar();
             FacePlayer();
             Debug.Log($"[{bossName}] ROAR!");
         }
@@ -250,22 +262,20 @@ public class BossAIController : MonoBehaviour
         if (player == null) return;
         if (_attackActive) return;
 
-        float dist = Vector3.Distance(transform.position, player.position);
+        float dist        = Vector3.Distance(transform.position, player.position);
+        float targetSpeed = 0f;
 
         if (dist > preferredDistance)
         {
-            Vector3 dir        = (player.position - transform.position).normalized;
-            dir.y              = 0f;
+            Vector3 dir = (player.position - transform.position).normalized;
+            dir.y = 0f;
             transform.position += dir * combatMoveSpeed * Time.deltaTime;
+            targetSpeed = 1f;
+        }
 
-            if (bossAnimator != null)
-                bossAnimator.SetFloat(SpeedHash, 1f);
-        }
-        else
-        {
-            if (bossAnimator != null)
-                bossAnimator.SetFloat(SpeedHash, 0f);
-        }
+        _bossSpeed = Mathf.Lerp(_bossSpeed, targetSpeed, 8f * Time.deltaTime);
+        if (bossAnimator != null)
+            bossAnimator.SetFloat(SpeedHash, _bossSpeed);
 
         FacePlayer();
     }
@@ -274,6 +284,7 @@ public class BossAIController : MonoBehaviour
     void HandleCombatAI()
     {
         if (_attackActive) return;
+        if (Time.time < _staggerEndTime) return;
 
         if (Time.time >= nextAttackTime)
         {
@@ -301,6 +312,8 @@ public class BossAIController : MonoBehaviour
         _dodgeWindowOpen = !_activeAttack.isParryable || _activeAttack.isUndodgeable;
         _parryWindowEnd = Time.time + _activeAttack.telegraphDuration;
         _dodgeWindowEnd = _parryWindowEnd;
+        _hitboxOpened = false;
+        _attackResolveTime = _parryWindowEnd + Mathf.Max(0.14f, _scaledParryWindow, _scaledDodgeWindow);
 
         switch (_activeAttack.id)
         {
@@ -330,6 +343,7 @@ public class BossAIController : MonoBehaviour
         }
 
         CombatEventSystem.RaiseBossAttackStart(_activeAttack, _activeAttack.telegraphDuration);
+        CombatEventBus.FireBossAttackTelegraph(_activeAttack, _activeAttack.telegraphDuration);
 
         if (debugCombatLogs)
             Debug.Log($"[{bossName}] {_activeAttack.name} telegraphed for {_activeAttack.telegraphDuration:F2}s ({_activeAttack.damage:F1} dmg)");
@@ -352,7 +366,13 @@ public class BossAIController : MonoBehaviour
 
     void CheckAttackWindows()
     {
-        if (_attackActive && Time.time > _parryWindowEnd)
+        if (_attackActive && !_hitboxOpened && Time.time >= _parryWindowEnd)
+        {
+            _hitboxOpened = true;
+            CombatEventBus.FireBossAttackHitbox(_activeAttack);
+        }
+
+        if (_attackActive && Time.time >= _attackResolveTime)
         {
             if (!_attackFullyCountered)
             {
@@ -394,13 +414,13 @@ public class BossAIController : MonoBehaviour
         if (resolution.grade == ParryTimingGrade.Perfect)
         {
             _attackFullyCountered = true;
-            TriggerBossHitReaction();
+            TriggerBossHitReaction(interruptAttack: _activeAttack.isParryable || _activeAttack.IsParryable);
             nextAttackTime = Time.time + Random.Range(_scaledMinInterval, _scaledMaxInterval) + 1.5f;
             ClearActiveAttack();
         }
         else if (resolution.grade == ParryTimingGrade.Good)
         {
-            TriggerBossHitReaction();
+            TriggerBossHitReaction(interruptAttack: false);
             nextAttackTime = Mathf.Max(nextAttackTime, Time.time + 0.6f);
         }
 
@@ -420,6 +440,7 @@ public class BossAIController : MonoBehaviour
             currentHealth = Mathf.Max(1f, maxHealth * healPercent);
             ForceAdaptivePhaseAdvanceTo(BossCombatPhase.Phase4);
             TriggerBossHitReaction();
+            CombatEventBus.FireBossSecondWind();
 
             if (debugCombatLogs)
                 Debug.Log($"[{bossName}] triggered second wind and healed to {currentHealth:F1}/{maxHealth:F1}");
@@ -454,7 +475,12 @@ public class BossAIController : MonoBehaviour
     {
         _state = BossState.Dead;
         if (bossAnimator != null) bossAnimator.SetBool(IsAliveHash, false);
+
+        if (CombatFX.Instance != null)
+            CombatFX.Instance.Hitstop(0.20f);
+
         CombatEventSystem.RaiseBossDefeated();
+        CombatEventBus.FireBossDied();
         Debug.Log($"[{bossName}] defeated.");
         Destroy(gameObject, 3f);
     }
@@ -466,7 +492,10 @@ public class BossAIController : MonoBehaviour
         {
             bool applied = PlayerHealth.Instance.TakeDamage(damage, attackType);
             if (applied)
+            {
                 CombatEventSystem.RaiseBossAttackLand(damage);
+                CombatEventBus.FireBossAttackLanded(damage);
+            }
         }
         else
             Debug.LogWarning("[Boss] PlayerHealth not found!");
@@ -484,13 +513,11 @@ public class BossAIController : MonoBehaviour
 
     void UpdateDifficultyPhase()
     {
-        int previousPhase = currentDifficultyPhase;
-        currentDifficultyPhase = adaptiveBoss != null
-            ? (int)adaptiveBoss.EvaluatePhase(GetHealthPercent())
-            : Mathf.Clamp(1 + Mathf.FloorToInt(((maxHealth - currentHealth) / maxHealth) * 10f), 1, 10);
-
-        if (previousPhase != currentDifficultyPhase)
-            CombatEventSystem.RaiseBossPhaseChange(currentDifficultyPhase);
+        currentDifficultyPhase = FightProgressionManager.Instance != null
+            ? FightProgressionManager.Instance.CurrentPhaseIndex
+            : adaptiveBoss != null
+                ? Mathf.Clamp((int)adaptiveBoss.EvaluatePhase(GetHealthPercent()), 1, 3)
+                : 1;
     }
 
     float GetCurrentCounterCooldown() =>
@@ -525,10 +552,13 @@ public class BossAIController : MonoBehaviour
 
         _scaledLightDamage = lightAttackDamage * settings.bossDamageMultiplier * settings.edgeMultiplier * settings.hiddenAssistMultiplier;
         _scaledHeavyDamage = heavyAttackDamage * settings.bossDamageMultiplier * settings.edgeMultiplier * settings.hiddenAssistMultiplier;
-        _scaledParryWindow = settings.telegraphDuration;
-        _scaledDodgeWindow = settings.telegraphDuration;
+        _scaledParryWindow = settings.parryWindowSeconds;
+        _scaledDodgeWindow = settings.dodgeWindowSeconds;
         _scaledMinInterval = settings.bossAttackIntervalMin;
         _scaledMaxInterval = settings.bossAttackIntervalMax;
+        currentDifficultyPhase = FightProgressionManager.Instance != null
+            ? FightProgressionManager.Instance.CurrentPhaseIndex
+            : currentDifficultyPhase;
     }
 
     public void ForceAdaptivePhaseAdvance()
@@ -546,21 +576,32 @@ public class BossAIController : MonoBehaviour
 
     private void ForceAdaptivePhaseAdvanceTo(BossCombatPhase phase)
     {
-        int previousPhase = currentDifficultyPhase;
-        currentDifficultyPhase = (int)phase;
-        if (previousPhase != currentDifficultyPhase)
-            CombatEventSystem.RaiseBossPhaseChange(currentDifficultyPhase);
-
+        currentDifficultyPhase = Mathf.Clamp((int)phase, 1, 3);
         nextAttackTime = Mathf.Min(nextAttackTime, Time.time + 0.5f);
     }
 
-    private void TriggerBossHitReaction()
+    private void TriggerBossHitReaction(bool interruptAttack = false)
     {
         if (bossAnimator == null)
             return;
 
+        if (interruptAttack)
+        {
+            bossAnimator.ResetTrigger(AttackHash);
+            bossAnimator.ResetTrigger(HeavyAttackHash);
+            bossAnimator.ResetTrigger(JumpAttackHash);
+            bossAnimator.ResetTrigger(KickHash);
+            bossAnimator.SetFloat(SpeedHash, 0f);
+            bossAnimator.Play(0, 0, 0f);
+        }
+
         bossAnimator.ResetTrigger(IsHurtHash);
         bossAnimator.SetTrigger(IsHurtHash);
+
+        _staggerEndTime = Time.time + (interruptAttack ? interruptStaggerDuration : hitStaggerDuration);
+
+        if (interruptAttack && CombatFX.Instance != null)
+            CombatFX.Instance.Hitstop(0.10f);
     }
 
     private void ClearActiveAttack()
@@ -571,6 +612,9 @@ public class BossAIController : MonoBehaviour
         _pendingDamage = 0f;
         _pendingDamageScale = 1f;
         _attackFullyCountered = false;
+        _hitboxOpened = false;
+        _attackResolveTime = 0f;
+        CombatEventBus.FireBossAttackEnded();
     }
 
     private void HandleDifficultyAdjusted(DifficultySettings settings)

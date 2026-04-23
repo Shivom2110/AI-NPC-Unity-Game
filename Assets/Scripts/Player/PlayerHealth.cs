@@ -70,6 +70,7 @@ public class PlayerHealth : MonoBehaviour
         _currentHealth  = Mathf.Max(0f, _currentHealth);
 
         CombatEventSystem.RaisePlayerDamaged(damage, attackType);
+        CombatEventBus.FirePlayerDamaged(damage, attackType);
 
         Debug.Log($"[Player] took {damage} dmg. HP: {_currentHealth}/{maxHealth}");
 

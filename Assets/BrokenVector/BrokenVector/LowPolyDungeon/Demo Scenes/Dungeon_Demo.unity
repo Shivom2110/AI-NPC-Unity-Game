@@ -15123,8 +15123,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BossAIController
   bossName: Shaan
   maxHealth: 2000
-  baseLightDamage: 8
-  baseHeavyDamage: 16
+  comboReadDepth: 2
+  baseCounterCooldown: 1.2
   spawnPosition: {x: 38, y: 0, z: -14}
   arenaPosition: {x: 26, y: 0, z: -12}
   entranceSpeed: 2
@@ -15132,17 +15132,29 @@ MonoBehaviour:
   roarDuration: 2.5
   combatMoveSpeed: 1.5
   preferredDistance: 3
-  intervalAtFullHP: 5
-  intervalAtLowHP: 1.2
-  patternChanceP1: 0.1
-  patternChanceP2: 0.45
-  patternChanceP3: 0.75
-  patternChanceP4: 1
-  edgeHealThreshold: 0.1
-  edgeHealTarget: 0.15
-  guaranteedRushInterval: 30
+  minAttackInterval: 2
+  maxAttackInterval: 4
+  parryWindowDuration: 0.6
+  dodgeWindowDuration: 0.8
+  lightAttackDamage: 6
+  heavyAttackDamage: 12
+  difficultyUpdateInterval: 3
+  damageAtSkill1: 0.5
+  damageAtSkill5: 1.6
+  parryWindowSkill1: 1
+  parryWindowSkill5: 0.3
+  dodgeWindowSkill1: 1.2
+  dodgeWindowSkill5: 0.4
+  minIntervalSkill1: 3.5
+  minIntervalSkill5: 1
+  maxIntervalSkill1: 5.5
+  maxIntervalSkill5: 2
   bossAnimator: {fileID: 312954814}
   player: {fileID: 709068692}
+  adaptiveBoss: {fileID: 0}
+  debugCombatLogs: 1
+  hitStaggerDuration: 0.4
+  interruptStaggerDuration: 0.85
 --- !u!95 &312954814
 Animator:
   serializedVersion: 7
@@ -25886,20 +25898,32 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 962086973}
     - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
+      propertyPath: swordPosition.x
+      value: -0.03
+      objectReference: {fileID: 0}
+    - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: swordPosition.y
-      value: 0.04
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
+      propertyPath: swordPosition.z
+      value: 0.4
       objectReference: {fileID: 0}
     - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: daggerPosition.x
-      value: -0.1
+      value: -0.06
       objectReference: {fileID: 0}
     - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: daggerPosition.y
-      value: 0.04
+      value: 0.03
       objectReference: {fileID: 0}
     - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: daggerPosition.z
       value: 0.15
+      objectReference: {fileID: 0}
+    - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
+      propertyPath: daggerRotation.z
+      value: 180
       objectReference: {fileID: 0}
     - target: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: swordDrawnPosition.x
@@ -26008,7 +26032,7 @@ PrefabInstance:
     - target: {fileID: 7031136194166202354, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: swordManager
       value: 
-      objectReference: {fileID: 709068705}
+      objectReference: {fileID: 0}
     - target: {fileID: 9212864761638019531, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
       propertyPath: m_ApplyRootMotion
       value: 0
@@ -34696,17 +34720,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 043d3e134da591f45a608524d3f1ca11, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RootMotionBlocker
---- !u!114 &709068705 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 3253041699906725800, guid: eba2e71ddec5b0644928f0f717037476, type: 3}
-  m_PrefabInstance: {fileID: 548084992}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 48855028}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 555cd4efa58065d40ac7220515f3350b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SwordManager
 --- !u!95 &709068709 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 9212864761638019531, guid: eba2e71ddec5b0644928f0f717037476, type: 3}

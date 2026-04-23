@@ -10,6 +10,7 @@ public class PlayerHUD : MonoBehaviour
         public RectTransform Root;
         public Image Background;
         public Image Accent;
+        public Image ReadyGlow;
         public Image IconPlate;
         public Image IconSprite;
         public Image CooldownOverlay;
@@ -42,7 +43,21 @@ public class PlayerHUD : MonoBehaviour
 
     private Sprite GetAbilitySprite(string displayName)
     {
-        _abilitySprites.TryGetValue(displayName.ToLowerInvariant(), out Sprite s);
+        string lookup = displayName.ToLowerInvariant();
+        switch (lookup)
+        {
+            case "slash":
+                lookup = "strike";
+                break;
+            case "flash":
+                lookup = "flashy";
+                break;
+            case "roll":
+                lookup = "parry";
+                break;
+        }
+
+        _abilitySprites.TryGetValue(lookup, out Sprite s);
         return s;
     }
 
@@ -64,6 +79,8 @@ public class PlayerHUD : MonoBehaviour
     private RectTransform _bossHealthFill;
     private Text _bossNameText;
     private Text _bossHealthText;
+    private Text _bossPhaseText;
+    private Text _bossSubtitleText;
     private readonly List<MoveSlotUI> _moveSlots = new List<MoveSlotUI>();
 
     // Status pill (heat mode / hidden assist)
@@ -167,6 +184,19 @@ public class PlayerHUD : MonoBehaviour
             new Vector2(0f, -10f),
             new Vector2(660f, 26f));
 
+        _bossPhaseText = CreateText(
+            "BossPhaseText",
+            bossBar,
+            "PHASE I",
+            13,
+            TextAnchor.UpperLeft,
+            new Color(0.95f, 0.79f, 0.32f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 1f),
+            new Vector2(18f, -12f),
+            new Vector2(240f, 22f));
+
         RectTransform bossBarFrame = CreateElement("BossBarFrame", bossBar);
         SetAnchoredBox(bossBarFrame, new Vector2(0.5f, 0.5f), new Vector2(680f, 24f), new Vector2(0f, -4f));
         AddImage(bossBarFrame.gameObject, new Color(0.16f, 0.11f, 0.11f, 1f));
@@ -187,6 +217,22 @@ public class PlayerHUD : MonoBehaviour
             new Vector2(0.5f, 0f),
             new Vector2(0f, 12f),
             new Vector2(220f, 22f));
+
+        _bossSubtitleText = CreateText(
+            "BossSubtitleText",
+            bossBar,
+            string.Empty,
+            12,
+            TextAnchor.MiddleCenter,
+            new Color(0.80f, 0.78f, 0.74f),
+            new Vector2(0.5f, 0f),
+            new Vector2(0.5f, 0f),
+            new Vector2(0.5f, 0f),
+            new Vector2(0f, 32f),
+            new Vector2(560f, 18f));
+        _bossSubtitleText.resizeTextForBestFit = true;
+        _bossSubtitleText.resizeTextMinSize = 10;
+        _bossSubtitleText.resizeTextMaxSize = 12;
 
         _bossRoot = bossBar.gameObject;
         _bossRoot.SetActive(false);
@@ -315,6 +361,9 @@ public class PlayerHUD : MonoBehaviour
 
         // Dark card background
         slot.Background = AddImage(slot.Root.gameObject, new Color(0.06f, 0.06f, 0.08f, 0.96f));
+        slot.ReadyGlow = AddImage(CreateElement("ReadyGlow", slot.Root).gameObject, new Color(0.96f, 0.80f, 0.24f, 0f));
+        Stretch(slot.ReadyGlow.rectTransform, -3f, -3f, -3f, -3f);
+        slot.ReadyGlow.enabled = false;
 
         // Gold border — top
         var borderTop = AddImage(CreateElement("BT", slot.Root).gameObject, new Color(0.85f, 0.68f, 0.18f, 1f));
@@ -455,7 +504,12 @@ public class PlayerHUD : MonoBehaviour
         SetFillWidth(_staminaFill, ratio, 3f);
 
         if (_staminaText != null)
+        {
             _staminaText.text = $"STA  {rs.CurrentStamina:0}/{rs.MaxStamina:0}";
+            _staminaText.color = ratio < 0.25f
+                ? new Color(0.98f, 0.52f, 0.30f)
+                : new Color(0.55f, 0.80f, 1f);
+        }
     }
 
     private void UpdateStatusPill()
@@ -505,6 +559,21 @@ public class PlayerHUD : MonoBehaviour
         SetFillWidth(_bossHealthFill, ratio, 3f);
         _bossNameText.text = _boss.GetBossName().ToUpperInvariant();
         _bossHealthText.text = $"{_boss.GetCurrentHealth():0} / {_boss.GetMaxHealth():0}";
+
+        FightProgressionManager fpm = FightProgressionManager.Instance;
+        if (fpm != null)
+        {
+            _bossPhaseText.text = fpm.CurrentPhaseName.ToUpperInvariant();
+            _bossSubtitleText.text = fpm.CurrentPhaseSubtitle;
+            Image bossFillImage = _bossHealthFill.GetComponent<Image>();
+            if (bossFillImage != null)
+                bossFillImage.color = GetPhaseHealthColor(fpm.CurrentPhaseIndex);
+        }
+        else
+        {
+            _bossPhaseText.text = "BOSS ENGAGED";
+            _bossSubtitleText.text = string.Empty;
+        }
     }
 
     private void UpdateMoveStrip()
@@ -534,7 +603,9 @@ public class PlayerHUD : MonoBehaviour
             else
             {
                 slot.IconPlate.sprite = GetWhiteSprite();
-                slot.IconPlate.color  = new Color(0.12f, 0.12f, 0.16f, 1f);
+                slot.IconPlate.color  = moveData.IsUsable
+                    ? new Color(moveData.AccentColor.r * 0.45f, moveData.AccentColor.g * 0.45f, moveData.AccentColor.b * 0.45f, 1f)
+                    : new Color(0.12f, 0.12f, 0.16f, 1f);
                 slot.IconText.gameObject.SetActive(true);
             }
 
@@ -542,6 +613,7 @@ public class PlayerHUD : MonoBehaviour
             float cooldownRatio = moveData.Cooldown > 0f
                 ? Mathf.Clamp01(moveData.RemainingCooldown / moveData.Cooldown)
                 : 0f;
+            bool readyPulse = moveData.IsUsable && !onCooldown && moveData.Cooldown > 0.9f;
 
             // Gold border dims when on cooldown or not usable
             float borderAlpha = !moveData.IsUsable ? 0.35f : onCooldown ? 0.6f : 1f;
@@ -567,6 +639,38 @@ public class PlayerHUD : MonoBehaviour
             slot.KeyText.color = moveData.IsUsable
                 ? new Color(0.95f, 0.78f, 0.20f)
                 : new Color(0.40f, 0.40f, 0.42f);
+
+            if (readyPulse)
+            {
+                float pulse = Mathf.Sin(Time.unscaledTime * 4.5f + i * 0.7f) * 0.5f + 0.5f;
+                slot.ReadyGlow.enabled = true;
+                slot.ReadyGlow.color = new Color(
+                    moveData.AccentColor.r,
+                    moveData.AccentColor.g,
+                    moveData.AccentColor.b,
+                    0.08f + pulse * 0.12f);
+                slot.Root.localScale = Vector3.one * (1f + pulse * 0.025f);
+            }
+            else
+            {
+                slot.ReadyGlow.enabled = false;
+                slot.Root.localScale = Vector3.one;
+            }
+        }
+    }
+
+    private static Color GetPhaseHealthColor(int phaseIndex)
+    {
+        switch (phaseIndex)
+        {
+            case 1:
+                return new Color(0.82f, 0.38f, 0.20f);
+            case 2:
+                return new Color(0.86f, 0.18f, 0.18f);
+            case 3:
+                return new Color(0.95f, 0.12f, 0.28f);
+            default:
+                return new Color(0.82f, 0.2f, 0.18f);
         }
     }
 

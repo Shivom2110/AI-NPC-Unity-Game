@@ -97,6 +97,75 @@ public struct DifficultySettings
     public float bossAttackIntervalMax;
     public float playerMaxStamina;
     public float hiddenAssistMultiplier;
+    public float telegraphScale;
+    public float parryWindowSeconds;
+    public float dodgeWindowSeconds;
+
+    public float BossDamageMultiplier
+    {
+        get => bossDamageMultiplier;
+        set => bossDamageMultiplier = value;
+    }
+
+    public float PlayerDamageMultiplier
+    {
+        get => playerDamageMultiplier;
+        set => playerDamageMultiplier = value;
+    }
+
+    public float AttackIntervalMin
+    {
+        get => bossAttackIntervalMin;
+        set => bossAttackIntervalMin = value;
+    }
+
+    public float AttackIntervalMax
+    {
+        get => bossAttackIntervalMax;
+        set => bossAttackIntervalMax = value;
+    }
+
+    public float ParryWindowSeconds
+    {
+        get => parryWindowSeconds;
+        set => parryWindowSeconds = value;
+    }
+
+    public float DodgeWindowSeconds
+    {
+        get => dodgeWindowSeconds;
+        set => dodgeWindowSeconds = value;
+    }
+
+    public float ParryableRatio
+    {
+        get => parryableRatio;
+        set => parryableRatio = value;
+    }
+
+    public float TelegraphScale
+    {
+        get => telegraphScale;
+        set => telegraphScale = value;
+    }
+
+    public float PlayerMaxHP
+    {
+        get => playerMaxHP;
+        set => playerMaxHP = value;
+    }
+
+    public float BossMaxHP
+    {
+        get => bossMaxHP;
+        set => bossMaxHP = value;
+    }
+
+    public float EdgeMultiplier
+    {
+        get => edgeMultiplier;
+        set => edgeMultiplier = value;
+    }
 }
 
 /// <summary>Combat summary persisted after each fight.</summary>

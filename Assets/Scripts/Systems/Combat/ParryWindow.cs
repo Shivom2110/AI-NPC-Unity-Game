@@ -21,6 +21,11 @@ public class ParryWindow : MonoBehaviour
     private int currentAttackSerial;
     private int lastResolvedAttackSerial = -1;
 
+    public bool HasActiveTelegraph => telegraphStartTime >= 0f && Time.time <= impactTime + 0.1f;
+    public BossAttack CurrentAttack => currentAttack;
+    public float TelegraphStartTime => telegraphStartTime;
+    public float ImpactTime => impactTime;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -35,11 +40,17 @@ public class ParryWindow : MonoBehaviour
     private void OnEnable()
     {
         CombatEventSystem.OnBossAttackStart += HandleBossAttackStart;
+        CombatEventBus.OnBossAttackEnded += HandleAttackEnded;
+        CombatEventBus.OnBossDied += HandleAttackEnded;
+        CombatEventBus.OnPlayerDied += HandleAttackEnded;
     }
 
     private void OnDisable()
     {
         CombatEventSystem.OnBossAttackStart -= HandleBossAttackStart;
+        CombatEventBus.OnBossAttackEnded -= HandleAttackEnded;
+        CombatEventBus.OnBossDied -= HandleAttackEnded;
+        CombatEventBus.OnPlayerDied -= HandleAttackEnded;
     }
 
     /// <summary>
@@ -73,8 +84,8 @@ public class ParryWindow : MonoBehaviour
             return resolution;
         }
 
-        float elapsedMs = Mathf.Max(0f, (Time.time - telegraphStartTime) * 1000f);
-        resolution.timingPrecisionMs = elapsedMs;
+        float timeToImpactMs = Mathf.Max(0f, (impactTime - Time.time) * 1000f);
+        resolution.timingPrecisionMs = timeToImpactMs;
 
         float windowScale = GetSkillWindowScale();
         float perfectThreshold = perfectParryMs * windowScale;
@@ -83,11 +94,11 @@ public class ParryWindow : MonoBehaviour
 
         if (Time.time > impactTime + 0.05f)
         {
-            CombatEventSystem.RaisePlayerParry(false, elapsedMs);
+            CombatEventSystem.RaisePlayerParry(false, timeToImpactMs);
             return resolution;
         }
 
-        if (elapsedMs <= perfectThreshold)
+        if (timeToImpactMs <= perfectThreshold)
         {
             resolution.success = true;
             resolution.shouldStaggerBoss = true;
@@ -95,7 +106,7 @@ public class ParryWindow : MonoBehaviour
             resolution.counterDamageMultiplier = 2f;
             resolution.grade = ParryTimingGrade.Perfect;
         }
-        else if (elapsedMs <= goodThreshold)
+        else if (timeToImpactMs <= goodThreshold)
         {
             resolution.success = true;
             resolution.shouldStaggerBoss = true;
@@ -103,7 +114,7 @@ public class ParryWindow : MonoBehaviour
             resolution.counterDamageMultiplier = 1.25f;
             resolution.grade = ParryTimingGrade.Good;
         }
-        else if (elapsedMs <= lateThreshold)
+        else if (timeToImpactMs <= lateThreshold)
         {
             resolution.success = false;
             resolution.shouldStaggerBoss = false;
@@ -122,6 +133,12 @@ public class ParryWindow : MonoBehaviour
         telegraphStartTime = Time.time;
         impactTime = Time.time + telegraphDuration;
         currentAttackSerial++;
+    }
+
+    private void HandleAttackEnded()
+    {
+        telegraphStartTime = -1f;
+        impactTime = -1f;
     }
 
     private float GetSkillWindowScale()

@@ -17,9 +17,9 @@ using UnityEngine;
 ///
 /// Both systems expose multipliers that <see cref="BossAIController"/> reads every frame.
 /// </summary>
-public class FightProgressionManager : MonoBehaviour
+public class LegacyFightProgressionManager : MonoBehaviour
 {
-    public static FightProgressionManager Instance { get; private set; }
+    public static LegacyFightProgressionManager Instance { get; private set; }
 
     // ── Heat Mode ──────────────────────────────────────────────────────────────
     [Header("Heat Mode")]

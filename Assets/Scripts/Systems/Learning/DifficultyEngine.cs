@@ -10,9 +10,9 @@ using UnityEngine;
 /// Subscribe to <see cref="CombatEventBus.OnDifficultyAdjusted"/> to receive updates,
 /// or poll <see cref="Current"/> directly.
 /// </summary>
-public class DifficultyEngine : MonoBehaviour
+public class LegacyDifficultyEngine : MonoBehaviour
 {
-    public static DifficultyEngine Instance { get; private set; }
+    public static LegacyDifficultyEngine Instance { get; private set; }
 
     // ── Boss damage ────────────────────────────────────────────────────────────
     [Header("Boss Damage (× base damage)")]

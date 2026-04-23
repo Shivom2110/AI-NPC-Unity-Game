@@ -113,8 +113,12 @@ public class AudioManager : MonoBehaviour
         switch (phase)
         {
             case 2: Play(sfxBossPhase2);      break;
-            case 3: Play(sfxBossPhase3);      break;
-            case 4: Play(sfxBossFinalPhase);  break;
+            case 3:
+                Play(sfxBossPhase3 != null ? sfxBossPhase3 : sfxBossFinalPhase);
+                break;
+            case 4:
+                Play(sfxBossFinalPhase);
+                break;
         }
     }
 

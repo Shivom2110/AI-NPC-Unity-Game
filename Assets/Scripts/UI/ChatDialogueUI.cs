@@ -34,24 +34,24 @@ public class ChatDialogueUI : MonoBehaviour
     private Button       _leaveBtn;
 
     // ── Palette ────────────────────────────────────────────────────────────────
-    private static readonly Color C_PanelBg    = new Color(0.09f, 0.10f, 0.15f, 0.97f);
-    private static readonly Color C_HeaderBg   = new Color(0.12f, 0.15f, 0.25f, 1.00f);
-    private static readonly Color C_HeaderLine = new Color(0.30f, 0.45f, 0.75f, 0.90f);
-    private static readonly Color C_ScrollBg   = new Color(0.07f, 0.08f, 0.12f, 1.00f);
-    private static readonly Color C_QRBarBg    = new Color(0.10f, 0.12f, 0.20f, 1.00f);
-    private static readonly Color C_QRBtn      = new Color(0.16f, 0.22f, 0.40f, 1.00f);
-    private static readonly Color C_QRHover    = new Color(0.24f, 0.34f, 0.58f, 1.00f);
-    private static readonly Color C_InputBg    = new Color(0.13f, 0.16f, 0.24f, 1.00f);
-    private static readonly Color C_InputRowBg = new Color(0.10f, 0.12f, 0.20f, 1.00f);
-    private static readonly Color C_SendBtn    = new Color(0.16f, 0.48f, 0.88f, 1.00f);
-    private static readonly Color C_LeaveBtn   = new Color(0.55f, 0.18f, 0.18f, 1.00f);
-    private static readonly Color C_PlayerBub  = new Color(0.18f, 0.42f, 0.80f, 1.00f);
-    private static readonly Color C_NPCBub     = new Color(0.22f, 0.28f, 0.42f, 1.00f);
-    private static readonly Color C_Border     = new Color(0.25f, 0.38f, 0.65f, 0.60f);
+    private static readonly Color C_PanelBg    = new Color(0.09f, 0.07f, 0.05f, 0.82f);
+    private static readonly Color C_HeaderBg   = new Color(0.15f, 0.11f, 0.07f, 0.94f);
+    private static readonly Color C_HeaderLine = new Color(0.80f, 0.63f, 0.24f, 0.88f);
+    private static readonly Color C_ScrollBg   = new Color(0.07f, 0.05f, 0.04f, 0.66f);
+    private static readonly Color C_QRBarBg    = new Color(0.12f, 0.09f, 0.06f, 0.86f);
+    private static readonly Color C_QRBtn      = new Color(0.26f, 0.20f, 0.12f, 0.96f);
+    private static readonly Color C_QRHover    = new Color(0.39f, 0.30f, 0.16f, 1.00f);
+    private static readonly Color C_InputBg    = new Color(0.14f, 0.10f, 0.07f, 0.96f);
+    private static readonly Color C_InputRowBg = new Color(0.11f, 0.08f, 0.05f, 0.88f);
+    private static readonly Color C_SendBtn    = new Color(0.55f, 0.40f, 0.14f, 1.00f);
+    private static readonly Color C_LeaveBtn   = new Color(0.43f, 0.17f, 0.12f, 1.00f);
+    private static readonly Color C_PlayerBub  = new Color(0.33f, 0.24f, 0.12f, 0.96f);
+    private static readonly Color C_NPCBub     = new Color(0.18f, 0.14f, 0.11f, 0.96f);
+    private static readonly Color C_Border     = new Color(0.80f, 0.63f, 0.24f, 0.48f);
     private static readonly Color C_Gold       = new Color(0.98f, 0.82f, 0.22f, 1.00f);
     private static readonly Color C_TextLight  = new Color(0.93f, 0.93f, 0.95f, 1.00f);
     private static readonly Color C_TextDim    = new Color(0.50f, 0.52f, 0.58f, 1.00f);
-    private static readonly Color C_IconBg     = new Color(0.22f, 0.40f, 0.76f, 1.00f);
+    private static readonly Color C_IconBg     = new Color(0.54f, 0.39f, 0.15f, 1.00f);
 
     private Font _font;
 

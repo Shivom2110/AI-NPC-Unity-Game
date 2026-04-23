@@ -58,11 +58,14 @@ public class PlayerCombatController : MonoBehaviour
 
     private BossAIController currentBoss;
     private DifficultySettings _currentDifficulty;
+    private bool _moveDataInitialized;
 
     void Awake()
     {
         if (GetComponent<PlayerHealth>() == null)
             gameObject.AddComponent<PlayerHealth>();
+
+        EnsureMoveDataInitialized();
     }
 
     void OnEnable()
@@ -78,24 +81,11 @@ public class PlayerCombatController : MonoBehaviour
     // ── Init ──────────────────────────────────────────────────────
     void Start()
     {
+        EnsureMoveDataInitialized();
+
         if (animator     == null) animator     = GetComponentInChildren<Animator>();
         if (swordManager == null) swordManager = GetComponent<SwordManager>();
         if (controller   == null) controller   = GetComponent<CharacterController>();
-
-        damages[PlayerAttackType.AutoAttack] = 10f;
-        damages[PlayerAttackType.Attack2]    = 50f;
-        damages[PlayerAttackType.Attack3]    = 200f;
-        damages[PlayerAttackType.Attack4]    = 150f;
-        damages[PlayerAttackType.Ultimate]   = 300f;
-
-        cooldowns[PlayerAttackType.AutoAttack] = 0.6f;  // prevent spam
-        cooldowns[PlayerAttackType.Attack2]    = 1.5f;
-        cooldowns[PlayerAttackType.Attack3]    = FlashyCooldown;
-        cooldowns[PlayerAttackType.Attack4]    = 7f;
-        cooldowns[PlayerAttackType.Ultimate]   = UltimateCooldown;
-
-        foreach (PlayerAttackType attack in damages.Keys)
-            lastUsedTimes[attack] = -999f;
 
         _currentDifficulty = FightProgressionManager.Instance != null
             ? FightProgressionManager.Instance.CurrentSettings
@@ -111,6 +101,8 @@ public class PlayerCombatController : MonoBehaviour
 
     void HandleInput()
     {
+        EnsureMoveDataInitialized();
+
         Keyboard keyboard = Keyboard.current;
         Mouse mouse = Mouse.current;
         if (keyboard == null)
@@ -178,6 +170,8 @@ public class PlayerCombatController : MonoBehaviour
     // ── Flashy Attack (E) ─────────────────────────────────────────
     void TryFlashyAttack()
     {
+        EnsureMoveDataInitialized();
+
         if (Time.time - _lastFlashyTime < FlashyCooldown)
         {
             Debug.Log($"[Player] E on cooldown: {(FlashyCooldown - (Time.time - _lastFlashyTime)):F1}s");
@@ -192,7 +186,7 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(FlashyAttackHash);
         }
 
-        ExecuteAttack(PlayerAttackType.Attack3, "flash", damages[PlayerAttackType.Attack3]);
+        ExecuteAttack(PlayerAttackType.Attack3, "flash", GetBaseDamage(PlayerAttackType.Attack3));
 
         Debug.Log("[Player] Flashy Attack!");
     }
@@ -200,6 +194,8 @@ public class PlayerCombatController : MonoBehaviour
     // ── Ultimate (R) ──────────────────────────────────────────────
     void TryUltimate()
     {
+        EnsureMoveDataInitialized();
+
         if (Time.time - _lastUltimateTime < UltimateCooldown)
         {
             Debug.Log($"[Player] R on cooldown: {(UltimateCooldown - (Time.time - _lastUltimateTime)):F1}s");
@@ -214,7 +210,7 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(UltimateHash);
         }
 
-        ExecuteAttack(PlayerAttackType.Ultimate, "ultimate", damages[PlayerAttackType.Ultimate]);
+        ExecuteAttack(PlayerAttackType.Ultimate, "ultimate", GetBaseDamage(PlayerAttackType.Ultimate));
 
         Debug.Log("[Player] ULTIMATE!");
     }
@@ -266,6 +262,8 @@ public class PlayerCombatController : MonoBehaviour
                    bool triggerLight = false,
                    bool triggerHeavy = false)
     {
+        EnsureMoveDataInitialized();
+
         float remaining = GetRemainingCooldown(attackType);
         if (remaining > 0f) return;
 
@@ -283,13 +281,17 @@ public class PlayerCombatController : MonoBehaviour
             animator.SetTrigger(HeavyAttackHash);
         }
 
-        ExecuteAttack(attackType, ComboHitSystem.ToActionToken(attackType), damages[attackType]);
+        ExecuteAttack(attackType, ComboHitSystem.ToActionToken(attackType), GetBaseDamage(attackType));
     }
 
     float GetRemainingCooldown(PlayerAttackType attackType)
     {
-        float elapsed = Time.time - lastUsedTimes[attackType];
-        return Mathf.Max(0f, cooldowns[attackType] - elapsed);
+        EnsureMoveDataInitialized();
+
+        float lastUseTime = lastUsedTimes.TryGetValue(attackType, out float storedLastUse) ? storedLastUse : -999f;
+        float cooldown = cooldowns.TryGetValue(attackType, out float storedCooldown) ? storedCooldown : 0f;
+        float elapsed = Time.time - lastUseTime;
+        return Mathf.Max(0f, cooldown - elapsed);
     }
 
     // ── Boss Detection ────────────────────────────────────────────
@@ -306,7 +308,7 @@ public class PlayerCombatController : MonoBehaviour
 
         if (best == null)
         {
-            BossAIController[] bosses = FindObjectsOfType<BossAIController>();
+            BossAIController[] bosses = FindObjectsByType<BossAIController>(FindObjectsSortMode.None);
             foreach (BossAIController boss in bosses)
             {
                 if (!IsBossTargetable(boss, out float dist))
@@ -331,13 +333,15 @@ public class PlayerCombatController : MonoBehaviour
 
     public bool TryGetHudMoveData(int index, out HudMoveData moveData)
     {
+        EnsureMoveDataInitialized();
+
         switch (index)
         {
             case 0:
                 moveData = BuildHudMoveData(
                     "Slash", "LMB", "SL",
                     GetDisplayedDamage(PlayerAttackType.AutoAttack),
-                    cooldowns[PlayerAttackType.AutoAttack],
+                    GetCooldownValue(PlayerAttackType.AutoAttack),
                     GetRemainingCooldown(PlayerAttackType.AutoAttack),
                     requiresDrawnWeapon: true,
                     new Color(0.83f, 0.67f, 0.25f));
@@ -347,7 +351,7 @@ public class PlayerCombatController : MonoBehaviour
                 moveData = BuildHudMoveData(
                     "Heavy", "RMB", "HV",
                     GetDisplayedDamage(PlayerAttackType.Attack2),
-                    cooldowns[PlayerAttackType.Attack2],
+                    GetCooldownValue(PlayerAttackType.Attack2),
                     GetRemainingCooldown(PlayerAttackType.Attack2),
                     requiresDrawnWeapon: true,
                     new Color(0.77f, 0.42f, 0.23f));
@@ -434,6 +438,8 @@ public class PlayerCombatController : MonoBehaviour
 
     private void ExecuteAttack(PlayerAttackType attackType, string attackLabel, float baseDamage)
     {
+        EnsureMoveDataInitialized();
+
         if (ComboTracker.Instance != null)
             ComboTracker.Instance.AddAttack(attackType, Time.time);
 
@@ -456,12 +462,14 @@ public class PlayerCombatController : MonoBehaviour
         }
 
         CombatEventSystem.RaisePlayerAttack(attackLabel, landed, landed ? finalDamage : 0f);
+        CombatEventBus.FirePlayerAttack(attackType, landed, landed ? finalDamage : 0f);
         ComboHitSystem.Instance?.ResolveCombo(comboSignature, landed);
     }
 
     private float GetDisplayedDamage(PlayerAttackType attackType)
     {
-        return GetScaledDamage(damages[attackType], 1f);
+        EnsureMoveDataInitialized();
+        return GetScaledDamage(GetBaseDamage(attackType), 1f);
     }
 
     private float GetScaledDamage(float baseDamage, float comboMultiplier)
@@ -479,6 +487,42 @@ public class PlayerCombatController : MonoBehaviour
     private void HandleDifficultyAdjusted(DifficultySettings settings)
     {
         _currentDifficulty = settings;
+    }
+
+    private void EnsureMoveDataInitialized()
+    {
+        if (_moveDataInitialized)
+            return;
+
+        damages[PlayerAttackType.AutoAttack] = 10f;
+        damages[PlayerAttackType.Attack2] = 50f;
+        damages[PlayerAttackType.Attack3] = 200f;
+        damages[PlayerAttackType.Attack4] = 150f;
+        damages[PlayerAttackType.Ultimate] = 300f;
+
+        cooldowns[PlayerAttackType.AutoAttack] = 0.6f;
+        cooldowns[PlayerAttackType.Attack2] = 1.5f;
+        cooldowns[PlayerAttackType.Attack3] = FlashyCooldown;
+        cooldowns[PlayerAttackType.Attack4] = 7f;
+        cooldowns[PlayerAttackType.Ultimate] = UltimateCooldown;
+
+        foreach (PlayerAttackType attack in damages.Keys)
+        {
+            if (!lastUsedTimes.ContainsKey(attack))
+                lastUsedTimes[attack] = -999f;
+        }
+
+        _moveDataInitialized = true;
+    }
+
+    private float GetBaseDamage(PlayerAttackType attackType)
+    {
+        return damages.TryGetValue(attackType, out float damage) ? damage : 0f;
+    }
+
+    private float GetCooldownValue(PlayerAttackType attackType)
+    {
+        return cooldowns.TryGetValue(attackType, out float cooldown) ? cooldown : 0f;
     }
 
     bool IsInRange(Transform target) =>

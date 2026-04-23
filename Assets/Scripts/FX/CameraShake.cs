@@ -25,33 +25,49 @@ public class CameraShake : MonoBehaviour
     private void Awake()
     {
         Instance = this;
+        _originOffset = transform.localPosition;
     }
 
     private void OnEnable()
     {
-        CombatEventBus.OnBossAttackLanded   += OnBossHit;
-        CombatEventBus.OnPlayerDied         += OnPlayerDied;
-        CombatEventBus.OnBossPhaseChanged   += OnPhaseChanged;
+        CombatEventBus.OnBossAttackLanded += OnBossHit;
+        CombatEventBus.OnPlayerDied       += OnPlayerDied;
+        CombatEventBus.OnBossPhaseChanged += OnPhaseChanged;
+        CombatEventBus.OnPlayerDamaged    += OnPlayerDamaged;
+        CombatEventBus.OnBossRoar         += OnBossRoared;
+        CombatEventBus.OnBossSecondWind   += OnBossSecondWind;
     }
 
     private void OnDisable()
     {
-        CombatEventBus.OnBossAttackLanded   -= OnBossHit;
-        CombatEventBus.OnPlayerDied         -= OnPlayerDied;
-        CombatEventBus.OnBossPhaseChanged   -= OnPhaseChanged;
+        CombatEventBus.OnBossAttackLanded -= OnBossHit;
+        CombatEventBus.OnPlayerDied       -= OnPlayerDied;
+        CombatEventBus.OnBossPhaseChanged -= OnPhaseChanged;
+        CombatEventBus.OnPlayerDamaged    -= OnPlayerDamaged;
+        CombatEventBus.OnBossRoar         -= OnBossRoared;
+        CombatEventBus.OnBossSecondWind   -= OnBossSecondWind;
     }
 
     // ── Event callbacks ────────────────────────────────────────────────────────
 
     private void OnBossHit(float damage)
     {
-        // Scale shake magnitude with damage
-        float mag = Mathf.Clamp(damage / 40f, 0.05f, 0.35f);
-        Shake(mag, 0.25f);
+        float mag = Mathf.Clamp(damage / 40f, 0.05f, 0.40f);
+        float dur = Mathf.Clamp(damage / 30f, 0.20f, 0.45f);
+        Shake(mag, dur);
     }
 
-    private void OnPlayerDied()       => Shake(0.45f, 0.6f);
-    private void OnPhaseChanged(int _) => Shake(0.5f, 0.5f);
+    private void OnPlayerDamaged(float damage, string attackType)
+    {
+        float mag = Mathf.Clamp(damage / 34f, 0.08f, 0.42f);
+        float dur = Mathf.Clamp(damage / 28f, 0.18f, 0.40f);
+        Shake(mag, dur);
+    }
+
+    private void OnPlayerDied()        => Shake(0.50f, 0.65f);
+    private void OnPhaseChanged(int _) => Shake(0.55f, 0.55f);
+    private void OnBossRoared()        => Shake(0.45f, 0.75f);
+    private void OnBossSecondWind()    => Shake(0.60f, 0.90f);
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -70,7 +86,7 @@ public class CameraShake : MonoBehaviour
         while (elapsed < duration)
         {
             float progress = elapsed / duration;
-            float dampened = magnitude * (1f - progress);   // linear decay
+            float dampened = magnitude * Mathf.Pow(1f - progress, 2f);  // quadratic — hard snap, smooth tail
 
             Vector3 offset = Random.insideUnitSphere * dampened;
             offset.z = 0f;   // keep Z clean for perspective cameras

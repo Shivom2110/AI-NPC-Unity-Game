@@ -7,6 +7,7 @@ public class PlayerAnimator : MonoBehaviour
 
     private Animator     _animator;
     private SwordManager _swordManager;
+    private CharacterController _characterController;
     private float        _currentSpeed;
 
     private static readonly int IsHurtHash       = Animator.StringToHash("IsHurt");
@@ -27,6 +28,7 @@ public class PlayerAnimator : MonoBehaviour
     {
         _animator     = GetComponentInChildren<Animator>();
         _swordManager = GetComponent<SwordManager>();
+        _characterController = GetComponent<CharacterController>();
 
         if (_animator == null)
             Debug.LogError("[PlayerAnimator] No Animator found.");
@@ -46,21 +48,20 @@ public class PlayerAnimator : MonoBehaviour
     // ── Speed ─────────────────────────────────────────────────────
     void UpdateSpeed()
     {
-        float h = 0f, v = 0f;
+        Keyboard kb = Keyboard.current;
 
-        if (Keyboard.current.wKey.isPressed) v =  1f;
-        if (Keyboard.current.sKey.isPressed) v = -1f;
-        if (Keyboard.current.aKey.isPressed) h = -1f;
-        if (Keyboard.current.dKey.isPressed) h =  1f;
+        bool isMoving = kb != null && (
+            kb.wKey.isPressed || kb.sKey.isPressed ||
+            kb.aKey.isPressed || kb.dKey.isPressed);
 
-        float inputAmount = new Vector2(h, v).magnitude;
-        bool  isRunning   = Keyboard.current.leftShiftKey.isPressed;
+        bool isRunning = kb != null && kb.leftShiftKey.isPressed;
 
         float targetSpeed = 0f;
-        if (inputAmount > 0.1f)
+        if (isMoving)
             targetSpeed = isRunning ? 6f : 3f;
 
-        _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, 10f * Time.deltaTime);
+        // unscaledDeltaTime so the lerp works correctly during hitstop
+        _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, 10f * Time.unscaledDeltaTime);
         _animator.SetFloat("Speed", _currentSpeed);
     }
 
